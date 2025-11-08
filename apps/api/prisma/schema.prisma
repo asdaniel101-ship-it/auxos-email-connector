@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Submission {
+  id              String        @id @default(cuid())
+  
+  // ===== MANDATORY FIELDS =====
+  // Business Legal Name (Mandatory)
+  businessName    String        // The registered legal name of the SMB entity
+  
+  // Years in Operation (Mandatory)
+  yearsInOperation Int?         // How long the business has been active; indicates maturity and stability
+  
+  // Number of Employees (Mandatory)
+  employeeCount   Int?          // Total full-time and part-time staff; influences certain coverages
+  
+  // Physical Locations (Mandatory) - Address components
+  address         String?       // Street address of primary location
+  city            String?       // City
+  state           String?       // State (2-letter code)
+  zip             String?       // ZIP/Postal code
+  additionalLocations String?   @db.Text // JSON array of additional location objects if multi-site
+  
+  // ===== OPTIONAL FIELDS (Coverage Discovery) =====
+  // Business Type / Industry (Optional)
+  industryCode    String?       // Primary business classification - NAICS code
+  industryLabel   String?       // Human-readable industry name
+  
+  // Description of Operations (Optional)
+  overview        String?       @db.Text // Summary of what the business does, key products/services, daily operations
+  
+  // Annual Revenue (Optional)
+  revenue         Decimal?      @db.Decimal(15, 2) // Reported gross annual income; used for coverage sizing
+  
+  // Risk Tolerance Level (Optional)
+  riskToleranceLevel String?    // SMB's preference for premium vs. deductible trade-offs (low/medium/high)
+  
+  // Current Coverages (Optional)
+  currentCoverages String?      @db.Text // Existing insurance types and carriers currently in force
+  
+  // Desired Coverage Types (Optional)
+  insuranceNeeds  String?       // Coverage categories the business is seeking (comma-separated)
+  
+  // Key Assets (Optional)
+  keyAssets       String?       @db.Text // Major assets: equipment, vehicles, property, or intellectual property
+  
+  // Digital Infrastructure Profile (Optional)
+  digitalInfrastructureProfile String? @db.Text // Overview of technology systems or cybersecurity practices
+  
+  // Growth Plans / Expansion Intent (Optional)
+  growthPlans     String?       @db.Text // Expected growth, new locations, or product lines
+  
+  // ===== NICE TO HAVE FIELDS =====
+  // Total Claims Count (Nice to Have)
+  totalClaimsCount Int?         // Number of insurance claims made in the past 3-5 years
+  
+  // Total Claims Loss (Nice to Have)
+  totalClaimsLoss Decimal?      @db.Decimal(15, 2) // Aggregate dollar amount of all claims over past 3-5 years
+  
+  // ===== SUBMISSION AGENT FIELDS (Optional) =====
+  // Tax Identification Number (Optional)
+  taxId           String?       // Government-issued identifier (EIN)
+  
+  // Business Registration Certificate (Optional)
+  businessRegistrationCert String? // Reference to uploaded document
+  
+  // Financial Statements (Nice to Have)
+  financialStatements String?   // Reference to uploaded balance sheet/income statement
+  
+  // Proof of Address (Optional)
+  proofOfAddress  String?       // Reference to uploaded verification document
+  
+  // Ownership Structure (Optional)
+  ownershipStructure String?    @db.Text // Breakdown of ownership percentages and key stakeholders
+  
+  // Prior Insurance Documents (Optional)
+  priorInsuranceDocs String?    // Reference to uploaded existing/expired policies
+  
+  // Employee List (Optional)
+  employeeList    String?       @db.Text // Summary of employees by role/department (de-identified)
+  
+  // Safety Manuals / Risk Policies (Optional)
+  safetyManuals   String?       // Reference to uploaded safety procedures documentation
+  
+  // ===== STATUS & METADATA =====
+  status          String        @default("draft")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @default(now()) @updatedAt
+  
+  // Relations
+  messages        ChatMessage[]
+  documents       Document[]
+  extractedFields ExtractedField[]
+}
+
+model ChatMessage {
+  id            String     @id @default(cuid())
+  submissionId  String
+  submission    Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  
+  role          String     // "user" or "assistant" or "system"
+  content       String     @db.Text
+  
+  createdAt     DateTime   @default(now())
+  
+  @@index([submissionId])
+}
+
+model Document {
+  id            String     @id @default(cuid())
+  submissionId  String
+  submission    Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  
+  fileName      String     // Original filename
+  fileKey       String     // MinIO key: "uploads/123-file.pdf"
+  fileSize      Int        // Size in bytes
+  mimeType      String     // e.g., "application/pdf"
+  
+  // Document classification
+  documentType  String?    // basic_company_info, claims_loss_history, financial_statements
+  
+  // Verification/Extraction status
+  verified      Boolean    @default(false)
+  verifiedAt    DateTime?
+  verificationData Json?    // Store what was found: {companyName: true, address: false}
+  
+  // Processing status
+  processingStatus String  @default("pending") // pending, processing, completed, failed
+  processingError  String? // Error message if processing failed
+  
+  createdAt     DateTime   @default(now())
+  extractedFields ExtractedField[]
+  
+  @@index([submissionId])
+  @@index([documentType])
+}
+
+model ExtractedField {
+  id            String   @id @default(cuid())
+  submissionId  String
+  submission    Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  documentId    String
+  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  // Field information
+  fieldName     String   // Name of the field (e.g., "businessName", "employeeCount")
+  fieldValue    String   @db.Text // Extracted value as string
+  
+  // Extraction metadata
+  confidence    Float?   // Confidence score 0-1 from extraction
+  source        String?  // Where in document it was found (page, section)
+  extractedText String?  @db.Text // Raw text that was extracted
+  
+  // Status
+  approved      Boolean  @default(false) // Whether user approved this extraction
+  rejectedReason String? // If rejected, why
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([submissionId])
+  @@index([documentId])
+  @@index([fieldName])
+  @@unique([documentId, fieldName]) // One extraction per field per document
+}

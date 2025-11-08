@@ -1,0 +1,187 @@
+{
+  "generalExtractionGuidance": {
+    "title": "Universal Extraction Principles",
+    "instructions": [
+      "READ THE ENTIRE DOCUMENT CAREFULLY - Don't just scan for keywords. Understand the document's structure, context, and content holistically.",
+      "ACCEPT KEYWORD VARIATIONS - Field labels may appear in multiple formats: camelCase (businessName), Title Case (Business Name), lowercase (business name), UPPERCASE (BUSINESS NAME), with spaces, without spaces, with underscores, etc.",
+      "USE CONTEXTUAL UNDERSTANDING - Information may not always have explicit labels. Use context clues, document structure, and common sense. For example, a company name may appear in a document title or header without any label.",
+      "LOOK FOR PATTERNS - Numbers, dates, addresses, and structured data often follow recognizable patterns even without labels. A 9-digit number formatted ##-####### is likely an EIN/Tax ID. A 5-digit number after a state abbreviation is likely a ZIP code.",
+      "BE FLEXIBLE WITH FORMATS - Data may appear in various formats: '$1,250,000' vs '1250000.00' vs '1.25M' for currency; '8 years' vs 'Since 2017' vs 'Established: 2017' for time periods.",
+      "CHECK DOCUMENT HEADERS AND FOOTERS - Important identifiers like business names, dates, and document types often appear in headers, footers, or document titles.",
+      "UNDERSTAND DOCUMENT TYPES - Financial statements have revenue in income statements, addresses appear in letterheads, claims data is in loss runs. Use document type context to guide extraction.",
+      "EXTRACT COMPLETE VALUES - Don't truncate values. For addresses, get the full street address. For descriptions, capture the complete sentence or paragraph.",
+      "CALCULATE WHEN NEEDED - If you see a founding year (e.g., 'Founded: 2017'), calculate years in operation (2025 - 2017 = 8 years).",
+      "MAINTAIN DATA INTEGRITY - Extract values exactly as they appear. Don't modify formatting unless specifically instructed. Preserve entity suffixes (LLC, Inc., Corp.) in business names."
+    ],
+    "confidenceScoring": {
+      "high": "0.9-1.0: Field label and value clearly identified with exact match",
+      "medium": "0.7-0.89: Value identified through contextual understanding or keyword variation",
+      "low": "0.5-0.69: Value inferred from patterns or calculated from related data",
+      "veryLow": "Below 0.5: Uncertain extraction, may require human review"
+    }
+  },
+  "documentTypes": {
+    "basic_company_info": {
+      "label": "Basic Company Information",
+      "description": "Documents containing core business details like articles of incorporation, business licenses, tax IDs, or general company overview documents",
+      "keywords": ["business name", "legal name", "EIN", "tax ID", "incorporation", "business license", "DBA", "doing business as"]
+    },
+    "claims_loss_history": {
+      "label": "Claims & Loss History",
+      "description": "Insurance claim records, loss runs, ACORD forms showing historical claims data, incident reports, or prior insurance declarations",
+      "keywords": ["loss run", "claims history", "ACORD", "incident", "claim", "loss", "prior insurance", "declaration page"]
+    },
+    "financial_statements": {
+      "label": "Financial Statements",
+      "description": "Balance sheets, income statements, P&L statements, tax returns, or financial reports showing revenue, assets, and liabilities",
+      "keywords": ["balance sheet", "income statement", "P&L", "profit and loss", "financial statement", "tax return", "Form 1120", "revenue", "assets", "liabilities"]
+    }
+  },
+  "fieldExtractionInstructions": {
+    "businessName": {
+      "label": "Business Legal Name",
+      "mandatory": true,
+      "instructions": "Extract the official legal business name. Often appears in document headers, titles, or near labels like 'Legal Name', 'DBA', 'Doing Business As'. Look for entity suffixes: LLC, Inc., Corp., LLP, Partnership. May appear unlabeled in document titles.",
+      "keywords": ["businessName", "business name", "Business Name", "BUSINESS NAME", "businessname", "legal name", "Legal Name", "legalName", "company name", "Company Name", "companyName", "DBA", "entity name", "entityName", "firm name", "organization name"],
+      "documentTypes": ["basic_company_info", "financial_statements"],
+      "patterns": ["^(?:Legal Name|Business Name|Company Name|businessName|legalName|companyName):\\s*(.+)$"]
+    },
+    "address": {
+      "label": "Street Address",
+      "mandatory": true,
+      "instructions": "Extract the primary business street address. Look for street numbers followed by street names (St, Ave, Rd, Blvd, Ln, Dr, Ct). Often in contact sections, headers, or after location labels.",
+      "keywords": ["address", "Address", "ADDRESS", "street address", "Street Address", "streetAddress", "business address", "Business Address", "businessAddress", "location", "Location", "principal place", "mailing address"],
+      "documentTypes": ["basic_company_info"],
+      "patterns": ["\\d+\\s+[A-Za-z0-9\\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct)"]
+    },
+    "city": {
+      "label": "City",
+      "mandatory": true,
+      "instructions": "Extract the city name from the business address. Typically appears after street address and before state code in address blocks.",
+      "keywords": ["city", "City", "CITY", "town", "Town", "municipality"],
+      "documentTypes": ["basic_company_info"],
+      "patterns": ["City:\\s*([A-Za-z\\s]+)"]
+    },
+    "state": {
+      "label": "State",
+      "mandatory": true,
+      "instructions": "Extract the 2-letter state abbreviation (e.g., TX, CA, NY, CO). Appears after city and before ZIP code in addresses.",
+      "keywords": ["state", "State", "STATE", "st", "ST", "province"],
+      "documentTypes": ["basic_company_info"],
+      "patterns": ["\\b[A-Z]{2}\\b(?=\\s*\\d{5})"]
+    },
+    "zip": {
+      "label": "ZIP Code",
+      "mandatory": true,
+      "instructions": "Extract 5-digit or 9-digit ZIP code (format: 12345 or 12345-6789). Appears at the end of address blocks, after state abbreviations.",
+      "keywords": ["zip", "Zip", "ZIP", "zipcode", "zipCode", "zip code", "Zip Code", "postal code", "Postal Code", "postalCode"],
+      "documentTypes": ["basic_company_info"],
+      "patterns": ["\\b\\d{5}(?:-\\d{4})?\\b"]
+    },
+    "additionalLocations": {
+      "label": "Additional Locations",
+      "mandatory": false,
+      "instructions": "Extract secondary business locations beyond primary address. Often in JSON arrays, comma-separated lists, or multiple addresses. Look for branch offices, satellite locations, multiple sites.",
+      "keywords": ["additionalLocations", "additional locations", "Additional Locations", "ADDITIONAL LOCATIONS", "other locations", "Other Locations", "otherLocations", "branch locations", "branches", "Branches", "satellite offices", "multiple locations", "secondary locations"],
+      "documentTypes": ["basic_company_info"],
+      "patterns": ["(?:Additional|Other)\\s+Locations?:\\s*(.+)"]
+    },
+    "employeeCount": {
+      "label": "Number of Employees",
+      "mandatory": true,
+      "instructions": "Extract total number of employees (full-time, part-time, seasonal). May appear in business overviews, HR sections, or payroll summaries. Look for FTE (Full-Time Equivalent) or total staff counts.",
+      "keywords": ["employeeCount", "employee count", "Employee Count", "EMPLOYEE COUNT", "employees", "Employees", "EMPLOYEES", "number of employees", "Number of Employees", "# of employees", "workforce", "Workforce", "FTE", "staff", "Staff", "total employees"],
+      "documentTypes": ["basic_company_info", "financial_statements"],
+      "patterns": ["(?:Total\\s+)?Employees?:\\s*(\\d+)", "(?:Employee|Staff)\\s+Count:\\s*(\\d+)"]
+    },
+    "yearsInOperation": {
+      "label": "Years in Operation",
+      "mandatory": true,
+      "instructions": "Extract or calculate years in business. Look for founding dates, establishment dates, or explicit year counts. If you see a founding year (e.g., 'Founded: 2017'), calculate current year minus founding year.",
+      "keywords": ["yearsInOperation", "years in operation", "Years in Operation", "Years In Operation", "YEARS IN OPERATION", "years in business", "Years in Business", "yearsInBusiness", "established", "Established", "founded", "Founded", "incorporation date", "since", "Since", "year started", "operating for"],
+      "documentTypes": ["basic_company_info"],
+      "patterns": ["(?:Established|Founded|Since):\\s*(\\d{4})", "(?:Years\\s+in\\s+Business|Operating\\s+for):\\s*(\\d+)"]
+    },
+    "revenue": {
+      "label": "Annual Revenue",
+      "mandatory": false,
+      "instructions": "Extract total annual gross revenue or sales. Typically the top line of income statements. Look for 'Revenue (Sales)', 'Gross Revenue', 'Total Sales' in financial documents.",
+      "keywords": ["revenue", "Revenue", "REVENUE", "annual revenue", "Annual Revenue", "annualRevenue", "gross revenue", "Gross Revenue", "grossRevenue", "total sales", "Total Sales", "totalSales", "gross receipts", "total income", "sales"],
+      "documentTypes": ["financial_statements"],
+      "patterns": ["(?:Annual\\s+)?Revenue:\\s*\\$?([\\d,]+(?:\\.\\d{2})?)", "Gross\\s+Receipts:\\s*\\$?([\\d,]+)"]
+    },
+    "industryCode": {
+      "label": "Industry Code (NAICS)",
+      "mandatory": true,
+      "instructions": "Extract NAICS or SIC code (2-6 digits). Common on tax forms, business registrations. Examples: '311812' (bakery), '236' (construction), '722' (restaurant).",
+      "keywords": ["industryCode", "industry code", "Industry Code", "INDUSTRY CODE", "NAICS", "naics", "NAICS code", "NAICS Code", "SIC", "SIC code", "business classification", "industry classification"],
+      "documentTypes": ["basic_company_info", "financial_statements"],
+      "patterns": ["NAICS(?:\\s+Code)?:\\s*(\\d{2,6})"]
+    },
+    "industryLabel": {
+      "label": "Industry Description",
+      "mandatory": true,
+      "instructions": "Extract the human-readable industry description or business type. Examples: 'Retail / Commercial Bakery', 'Construction', 'Restaurant', 'Healthcare Services', 'Technology Consulting'.",
+      "keywords": ["industryLabel", "industry label", "Industry Label", "INDUSTRY LABEL", "industry", "Industry", "INDUSTRY", "type of business", "Type of Business", "business type", "Business Type", "businessType", "business category", "line of business", "nature of business", "sector"],
+      "documentTypes": ["basic_company_info"],
+      "patterns": ["(?:Type\\s+of\\s+Business|Industry):\\s*(.+)"]
+    },
+    "overview": {
+      "label": "Business Overview",
+      "mandatory": false,
+      "instructions": "Extract description of what the business does - operations, products, services, activities. Typically paragraphs explaining company operations. Examples: 'specializes in artisan breads and pastries for retail and wholesale', 'commercial construction for office buildings'.",
+      "keywords": ["overview", "Overview", "OVERVIEW", "business overview", "Business Overview", "businessOverview", "description", "Description", "business description", "Business Description", "businessDescription", "operations", "Operations", "about", "About", "company profile", "what we do"],
+      "documentTypes": ["basic_company_info"],
+      "patterns": ["(?:Overview|Description):\\s*(.+)"]
+    },
+    "totalClaimsCount": {
+      "label": "Total Claims Count",
+      "mandatory": false,
+      "instructions": "Count total insurance claims filed in past 3-5 years. Look in loss run reports, ACORD forms, or claim tables. May be explicit count or require counting individual entries.",
+      "keywords": ["totalClaimsCount", "total claims count", "Total Claims Count", "TOTAL CLAIMS COUNT", "total claims", "Total Claims", "totalClaims", "claims count", "number of claims", "claim count", "loss run", "claims", "incidents"],
+      "documentTypes": ["claims_loss_history"],
+      "patterns": ["Total\\s+Claims:\\s*(\\d+)"]
+    },
+    "totalClaimsLoss": {
+      "label": "Total Claims Loss Amount",
+      "mandatory": false,
+      "instructions": "Sum total dollar amount paid/incurred for all claims in past 3-5 years. Look in loss run reports for 'Total Paid', 'Total Incurred', 'Paid Losses'. May need to sum individual claim amounts.",
+      "keywords": ["totalClaimsLoss", "total claims loss", "Total Claims Loss", "TOTAL CLAIMS LOSS", "total paid", "Total Paid", "totalPaid", "total incurred", "paid losses", "loss amount", "claim amount", "claims loss"],
+      "documentTypes": ["claims_loss_history"],
+      "patterns": ["Total\\s+(?:Paid|Incurred|Losses):\\s*\\$?([\\d,]+(?:\\.\\d{2})?)"]
+    },
+    "taxId": {
+      "label": "Tax ID (EIN)",
+      "mandatory": false,
+      "instructions": "Extract Employer Identification Number (EIN) formatted as ##-####### (9 digits with hyphen). Common on W-9 forms, tax returns, business licenses, financial statements. Examples: '98-7654321', '12-3456789'.",
+      "keywords": ["taxId", "tax id", "Tax ID", "TAX ID", "tax Id", "EIN", "ein", "E.I.N.", "federal tax ID", "Federal Tax ID", "federalTaxId", "employer identification number", "Employer Identification Number", "TIN", "taxpayer ID"],
+      "documentTypes": ["basic_company_info", "financial_statements"],
+      "patterns": ["EIN:\\s*(\\d{2}-\\d{7})", "Tax\\s+ID:\\s*(\\d{2}-\\d{7})"]
+    },
+    "ownershipStructure": {
+      "label": "Ownership Structure",
+      "mandatory": false,
+      "instructions": "Extract information about business owners and ownership percentages. Look for names with percentages or titles like 'Managing Member', 'Partner', 'Shareholder'. Examples: '100% owned by Maria Lopez (Managing Member)', 'John Smith - 60%, Jane Doe - 40%'.",
+      "keywords": ["ownershipStructure", "ownership structure", "Ownership Structure", "OWNERSHIP STRUCTURE", "ownership", "Ownership", "shareholders", "Shareholders", "partners", "Partners", "members", "Members", "principals", "owners", "managing member"],
+      "documentTypes": ["basic_company_info"],
+      "patterns": ["Ownership:\\s*(.+)", "(?:Owner|Shareholder|Partner):\\s*([^\\n]+)\\s*-?\\s*(\\d+)%"]
+    },
+    "keyAssets": {
+      "label": "Key Assets",
+      "mandatory": false,
+      "instructions": "Extract descriptions of major business assets: buildings, equipment, vehicles, intellectual property. Look in balance sheets under 'Property, Plant & Equipment', 'Fixed Assets', or asset schedules. Examples: 'Fleet of 10 delivery trucks', 'Warehouse building', 'Manufacturing equipment'.",
+      "keywords": ["assets", "property", "equipment", "vehicles", "fleet", "building", "machinery"],
+      "documentTypes": ["financial_statements", "basic_company_info"],
+      "patterns": ["(?:Key\\s+)?Assets:\\s*(.+)"]
+    },
+    "currentCoverages": {
+      "label": "Current Insurance Coverages",
+      "mandatory": false,
+      "instructions": "Extract existing insurance policies and carriers. Look in declaration pages, certificates of insurance, or policy summaries. Capture policy type and carrier name. Examples: 'General Liability - State Farm', 'Workers Comp - Hartford Insurance'.",
+      "keywords": ["current insurance", "existing coverage", "policy", "carrier", "insurer", "declaration page"],
+      "documentTypes": ["basic_company_info"],
+      "patterns": ["(?:Policy|Coverage)\\s+Type:\\s*(.+?)\\s*(?:Carrier|Insurer):\\s*(.+)"]
+    }
+  }
+}
+
