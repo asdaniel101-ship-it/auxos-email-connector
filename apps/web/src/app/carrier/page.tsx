@@ -27,24 +27,38 @@ export default function CarrierDashboard() {
       const data = await response.json();
       
       // Transform real submissions for carrier view
-      const carrierSubmissions = data.map((sub: any) => ({
+      const activeStatuses = ['draft', 'in_review', 'reviewed', 'quoted', 'bound'];
+      const activeSubmissions = data.filter((sub: any) =>
+        activeStatuses.includes((sub.status || 'draft').toLowerCase()),
+      );
+
+      const carrierSubmissions = activeSubmissions.map((sub: any) => ({
         id: sub.id,
         companyName: sub.businessName,
         industry: sub.industryLabel || 'Not specified',
-        coverageRequested: sub.insuranceNeeds || 'Not specified',
-        status: sub.status || 'New',
+        status: (sub.status || 'draft') as string,
         carrierAppetite: getRandomAppetite(),
-        potentialPremium: getRandomPremium()
+        potentialPremium: getRandomPremium(),
       }));
       
       setSubmissions(carrierSubmissions);
       
       // Calculate metrics based on actual data
+      const reviewedStatuses = ['reviewed', 'quoted', 'bound'];
+      const quotedStatuses = ['quoted', 'bound'];
+      const boundStatuses = ['bound'];
+
       setMetrics({
-        submissions: data.length,
-        reviewed: data.filter((s: any) => s.status === 'reviewed').length,
-        quoted: data.filter((s: any) => s.status === 'quoted').length,
-        bound: data.filter((s: any) => s.status === 'bound').length
+        submissions: activeSubmissions.length,
+        reviewed: activeSubmissions.filter((s: any) =>
+          reviewedStatuses.includes((s.status || '').toLowerCase()),
+        ).length,
+        quoted: activeSubmissions.filter((s: any) =>
+          quotedStatuses.includes((s.status || '').toLowerCase()),
+        ).length,
+        bound: activeSubmissions.filter((s: any) =>
+          boundStatuses.includes((s.status || '').toLowerCase()),
+        ).length,
       });
     } catch (error) {
       console.error('Error loading submissions:', error);
@@ -81,31 +95,30 @@ export default function CarrierDashboard() {
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
-      case 'new': return 'text-blue-600 bg-blue-100';
-      default: return 'text-gray-600 bg-gray-100';
+      case 'draft':
+        return 'text-gray-600 bg-gray-100';
+      case 'in_review':
+        return 'text-blue-600 bg-blue-100';
+      case 'reviewed':
+        return 'text-purple-600 bg-purple-100';
+      case 'quoted':
+        return 'text-indigo-600 bg-indigo-100';
+      case 'bound':
+        return 'text-green-600 bg-green-100';
+      default:
+        return 'text-gray-600 bg-gray-100';
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Carrier Dashboard</h1>
-              <p className="text-gray-600 mt-1">Manage and review insurance submissions</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-500">Welcome back, Carrier Team</span>
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-medium">C</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+  const formatStatusLabel = (status: string) =>
+    status
+      .replace(/_/g, ' ')
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
 
+  return (
+    <div className="min-h-full bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Metrics Section */}
         <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
@@ -179,9 +192,6 @@ export default function CarrierDashboard() {
                     Industry
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Coverage Requested
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -204,12 +214,9 @@ export default function CarrierDashboard() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">{submission.industry}</div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900 max-w-xs truncate">{submission.coverageRequested}</div>
-                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(submission.status)}`}>
-                        {submission.status}
+                        {formatStatusLabel(submission.status)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

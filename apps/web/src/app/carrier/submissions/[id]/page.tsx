@@ -110,6 +110,7 @@ export default function CarrierSubmissionDetail() {
   const [formData, setFormData] = useState<Partial<Submission>>({});
   const [loading, setLoading] = useState(true);
   const [showProceedModal, setShowProceedModal] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
   const [conflictModalOpen, setConflictModalOpen] = useState(false);
   const [currentConflict, setCurrentConflict] = useState<{
     fieldName: string;
@@ -128,7 +129,25 @@ export default function CarrierSubmissionDetail() {
       const response = await fetch(`${API}/submissions/${submissionId}`);
       if (!response.ok) throw new Error('Failed to load submission');
       
-      const data = await response.json();
+      let data = await response.json();
+
+      // Mark submission as reviewed when carrier opens the page
+      if (data.status && data.status.toLowerCase() === 'in_review') {
+        try {
+          const reviewResponse = await fetch(`${API}/submissions/${submissionId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'reviewed' }),
+          });
+
+          if (reviewResponse.ok) {
+            data = await reviewResponse.json();
+          }
+        } catch (error) {
+          console.error('Failed to mark submission as reviewed:', error);
+        }
+      }
+
       setSubmission(data);
       setFormData(data);
 
@@ -142,6 +161,32 @@ export default function CarrierSubmissionDetail() {
       console.error('Error loading submission:', error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function removeFromQueue() {
+    if (!submission) return;
+    if (!window.confirm('Remove this submission from the carrier queue?')) return;
+
+    setIsRemoving(true);
+    try {
+      const response = await fetch(`${API}/submissions/${submissionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'archived' }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to update submission: ${response.statusText}`);
+      }
+
+      alert('Submission removed from the active carrier queue.');
+      router.push('/carrier');
+    } catch (error) {
+      console.error('Error removing submission:', error);
+      alert('Failed to remove submission. Please try again.');
+    } finally {
+      setIsRemoving(false);
     }
   }
 
@@ -273,28 +318,7 @@ export default function CarrierSubmissionDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <Link href="/carrier" className="text-blue-600 hover:text-blue-800 text-sm mb-2 inline-block">
-                ← Back to Dashboard
-              </Link>
-              <h1 className="text-3xl font-bold text-gray-900">{submission.businessName}</h1>
-              <p className="text-gray-600 mt-1">Submission Review & Quote</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-500">Carrier Review</span>
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-medium">C</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <div className="min-h-full bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Business Information */}
         <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
@@ -673,17 +697,26 @@ export default function CarrierSubmissionDetail() {
 
         {/* Actions */}
         <div className="bg-white rounded-lg shadow-sm border p-6">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Ready to Proceed?</h2>
               <p className="text-gray-600 text-sm mt-1">Choose how to handle this submission</p>
             </div>
-            <button
-              onClick={() => setShowProceedModal(true)}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
-            >
-              Proceed with Submission
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => setShowProceedModal(true)}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
+              >
+                Proceed with Submission
+              </button>
+              <button
+                onClick={removeFromQueue}
+                disabled={isRemoving}
+                className="px-6 py-3 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isRemoving ? 'Removing...' : 'Remove from Queue'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
