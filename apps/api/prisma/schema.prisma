@@ -50,6 +50,11 @@ model Submission {
   // Key Assets (Optional)
   keyAssets       String?       @db.Text // Major assets: equipment, vehicles, property, or intellectual property
   
+  // Restaurant-specific risk indicators
+  alcoholServiceStatus   String?       // yes / no / unknown
+  alcoholSalesPercentage Decimal?      @db.Decimal(5, 2) // Percent of revenue from alcohol if provided
+  alcoholSalesInfoStatus String?       // null, 'unknown', etc. to track follow-up completion
+
   // Digital Infrastructure Profile (Optional)
   digitalInfrastructureProfile String? @db.Text // Overview of technology systems or cybersecurity practices
   

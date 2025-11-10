@@ -138,6 +138,10 @@ export class SubmissionsService {
     isCorrection?: boolean;
     requestingIndustryOptions?: boolean;
     invalidAnswer?: string;
+    alcoholServiceStatus?: 'yes' | 'no' | 'unknown';
+    alcoholSalesPercentage?: number;
+    alcoholSalesResponse?: 'unknown';
+    alcoholSalesInfoStatus?: 'unknown' | 'known';
   } {
     const result: any = {};
     const answered = currentSubmission ? this.getAnsweredQuestions(currentSubmission) : {
@@ -214,6 +218,26 @@ export class SubmissionsService {
       result.totalClaimsLoss = amount;
     }
 
+    // Determine if we're expecting alcohol-related answers
+    const industryLabel = currentSubmission?.industryLabel?.toLowerCase() || '';
+    const expectingAlcoholServiceAnswer =
+      (currentSubmission?.industryLabel?.toLowerCase().includes('food') ||
+        currentSubmission?.industryLabel?.toLowerCase().includes('restaurant') ||
+        currentSubmission?.industryCode?.startsWith('722') ||
+        (currentSubmission?.industryLabel === undefined &&
+          result.industryKeywords?.includes('restaurant'))) &&
+      !currentSubmission?.alcoholServiceStatus;
+
+    const restaurantIndustryDetected =
+      /restaurant|food service|cafe|bar/i.test(message) ||
+      currentSubmission?.industryLabel?.toLowerCase().includes('food') ||
+      currentSubmission?.industryLabel?.toLowerCase().includes('restaurant');
+
+    const expectingAlcoholSalesAnswer =
+      (currentSubmission?.alcoholServiceStatus === 'yes' || result.alcoholServiceStatus === 'yes') &&
+      (currentSubmission?.alcoholSalesPercentage === null ||
+        currentSubmission?.alcoholSalesPercentage === undefined);
+
     // Extract risk tolerance
     if (/low\s*risk|conservative|minimal\s*risk/i.test(message)) {
       result.riskToleranceLevel = 'low';
@@ -231,6 +255,62 @@ export class SubmissionsService {
     // Extract growth plans
     if (/expanding|growth|new location|opening|planning|hiring|scale/i.test(message)) {
       result.growthPlans = message;
+    }
+
+    // Alcohol service detection (restaurants, bars, etc.)
+    if (restaurantIndustryDetected || /alcohol|liquor|beer|wine|bar/i.test(message)) {
+      const yesPattern = /\b(yes|yeah|yep|we do|we serve|we sell|sure|absolutely)\b/i;
+      const noPattern = /\b(no|nope|nah|do not|don't|never|none)\b/i;
+      const unsurePattern = /\b(not sure|unsure|idk|don't know|unknown)\b/i;
+
+      if (unsurePattern.test(message) && (expectingAlcoholServiceAnswer || /alcohol|liquor|beer|wine/i.test(message))) {
+        result.alcoholServiceStatus = 'unknown';
+      } else if (yesPattern.test(message)) {
+        result.alcoholServiceStatus = 'yes';
+      } else if (noPattern.test(message)) {
+        result.alcoholServiceStatus = 'no';
+      }
+
+      // Extract alcohol sales percentage if mentioned
+      const percentMatch = message.match(/(\d{1,3})(?:\s*%|\s*percent)/i);
+      if (percentMatch) {
+        const percentValue = parseFloat(percentMatch[1]);
+        if (!isNaN(percentValue)) {
+          result.alcoholSalesPercentage = Math.min(Math.max(percentValue, 0), 100);
+        result.alcoholSalesInfoStatus = 'known';
+      }
+      } else if (unsurePattern.test(message) && (expectingAlcoholSalesAnswer || /alcohol|liquor|beer|wine/i.test(message))) {
+        result.alcoholSalesResponse = 'unknown';
+        result.alcoholSalesInfoStatus = 'unknown';
+      }
+    } else if (expectingAlcoholServiceAnswer) {
+      const yesPattern = /\b(yes|yeah|yep|we do|we serve|we sell|sure|absolutely)\b/i;
+      const noPattern = /\b(no|nope|nah|do not|don't|never|none)\b/i;
+      const unsurePattern = /\b(not sure|unsure|idk|don't know|unknown)\b/i;
+
+      if (unsurePattern.test(message)) {
+        result.alcoholServiceStatus = 'unknown';
+        result.alcoholSalesInfoStatus = 'unknown';
+      } else if (yesPattern.test(message)) {
+        result.alcoholServiceStatus = 'yes';
+        result.alcoholSalesInfoStatus = 'known';
+      } else if (noPattern.test(message)) {
+        result.alcoholServiceStatus = 'no';
+        result.alcoholSalesInfoStatus = 'known';
+      }
+    } else if (expectingAlcoholSalesAnswer) {
+      const unsurePattern = /\b(not sure|unsure|idk|don't know|unknown)\b/i;
+      const percentMatch = message.match(/(\d{1,3})(?:\s*%|\s*percent)/i);
+      if (percentMatch) {
+        const percentValue = parseFloat(percentMatch[1]);
+        if (!isNaN(percentValue)) {
+          result.alcoholSalesPercentage = Math.min(Math.max(percentValue, 0), 100);
+          result.alcoholSalesInfoStatus = 'known';
+        }
+      } else if (unsurePattern.test(message)) {
+        result.alcoholSalesResponse = 'unknown';
+        result.alcoholSalesInfoStatus = 'unknown';
+      }
     }
 
     // Extract insurance types
@@ -318,6 +398,36 @@ export class SubmissionsService {
   generateResponse(analysis: any, currentSubmission: any): string {
     const parts: string[] = [];
     const answered = this.getAnsweredQuestions(currentSubmission);
+    let alcoholNote = '';
+
+    const industryLabel = currentSubmission.industryLabel?.toLowerCase() || '';
+    const restaurantIndustrySelected =
+      industryLabel.includes('food') ||
+      industryLabel.includes('restaurant') ||
+      currentSubmission.industryCode?.startsWith('722') ||
+      analysis.industryKeywords?.includes('restaurant');
+
+    const hasRestaurantContext =
+      restaurantIndustrySelected ||
+      analysis.alcoholServiceStatus !== undefined ||
+      (currentSubmission.alcoholServiceStatus !== null &&
+        currentSubmission.alcoholServiceStatus !== undefined);
+
+    const serviceStatusFromSubmission = currentSubmission.alcoholServiceStatus ?? undefined;
+    const serviceStatusFromMessage = analysis.alcoholServiceStatus ?? undefined;
+    const resolvedServiceStatus = serviceStatusFromMessage ?? serviceStatusFromSubmission;
+
+    const percentFromSubmission =
+      currentSubmission.alcoholSalesPercentage !== null && currentSubmission.alcoholSalesPercentage !== undefined
+        ? Number(currentSubmission.alcoholSalesPercentage)
+        : undefined;
+    const percentFromMessage = analysis.alcoholSalesPercentage ?? undefined;
+    const resolvedPercent = percentFromMessage ?? percentFromSubmission;
+
+    const alcoholSalesResponse = analysis.alcoholSalesResponse ?? undefined;
+
+    const attachAlcoholNote = (message: string) =>
+      alcoholNote ? `${alcoholNote}\n\n${message}` : message;
 
     // Handle industry correction request
     if (analysis.requestingIndustryOptions) {
@@ -333,6 +443,26 @@ export class SubmissionsService {
     }
 
     // STEP-BY-STEP QUESTION FLOW
+
+    if (hasRestaurantContext) {
+      if (!resolvedServiceStatus) {
+        return "Quick restaurant question: do you sell any alcohol (beer, wine, or spirits)?\n\nThis really influences your risk profile, so it's super helpful if you know. If you're not sure, you can reply with \"I'm not sure\" or \"idk\" and we'll keep moving.";
+      }
+
+      if (resolvedServiceStatus === 'yes' && resolvedPercent === undefined && alcoholSalesResponse !== 'unknown') {
+        return "Thanks for confirming you serve alcohol. Roughly what percentage of your total sales comes from alcohol?\n\nEven an estimate helps carriers evaluate your liquor liability exposure. If you're not sure, it's totally fine to reply with \"I'm not sure\" or \"idk\".";
+      }
+
+      if (resolvedServiceStatus === 'yes' && resolvedPercent === undefined && alcoholSalesResponse === 'unknown') {
+        alcoholNote = "Thanks for letting me know you're unsure about how much of your sales come from alcohol. If you ever get that number, sharing it can really help underwriters gauge your liquor liability risk.";
+      } else if (resolvedServiceStatus === 'yes' && resolvedPercent !== undefined) {
+        alcoholNote = `Great—I've noted that about ${resolvedPercent}% of your sales come from alcohol. That context is important for the underwriting team.`;
+      } else if (resolvedServiceStatus === 'no') {
+        alcoholNote = "Perfect—I've noted that you don't sell alcohol. That generally keeps your risk profile a bit lower.";
+      } else if (resolvedServiceStatus === 'unknown') {
+        alcoholNote = "No worries if you're not sure about alcohol sales. Even letting us know you're unsure helps set expectations—if you find out later, feel free to update us.";
+      }
+    }
     
     // Step 1: Employee Count (if not answered)
     if (!answered.employeeCount) {
@@ -383,7 +513,8 @@ export class SubmissionsService {
             `• ${cov.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}`
           );
           
-          return `Excellent! Based on your ${industryLabel.toLowerCase()} business with ${currentSubmission.employeeCount} employees, I recommend these insurance coverages:\n\n${recLabels.join('\n')}\n\n💡 **Why these?** ${recommendations.reasoning}\n\n**Question 4 of 4:** Does this coverage package look good, or would you like to add/remove any coverages?\n\n(You can say "looks good", or tell me what to add/remove)`;
+          const message = `Excellent! Based on your ${industryLabel.toLowerCase()} business with ${currentSubmission.employeeCount} employees, I recommend these insurance coverages:\n\n${recLabels.join('\n')}\n\n💡 **Why these?** ${recommendations.reasoning}\n\n**Question 4 of 4:** Does this coverage package look good, or would you like to add/remove any coverages?\n\n(You can say "looks good", or tell me what to add/remove)`;
+          return attachAlcoholNote(message);
         }
       }
       // Ask the question (only if previous questions were answered)
@@ -420,7 +551,7 @@ export class SubmissionsService {
         '• Professional Liability (E&O)',
         '• Property Insurance'
       ];
-      return `**Question 4 of 4:** Based on your business, I recommend these common coverages:\n\n${genericCoverages.join('\n')}\n\n💡 **Why these?** These are the most common coverages that protect businesses from general risks, employee injuries, professional mistakes, and property damage.\n\nDoes this coverage package look good, or would you like to add/remove any coverages?\n\n(You can say "looks good", or tell me what to add/remove)`;
+      return attachAlcoholNote(`**Question 4 of 4:** Based on your business, I recommend these common coverages:\n\n${genericCoverages.join('\n')}\n\n💡 **Why these?** These are the most common coverages that protect businesses from general risks, employee injuries, professional mistakes, and property damage.\n\nDoes this coverage package look good, or would you like to add/remove any coverages?\n\n(You can say "looks good", or tell me what to add/remove)`);
     }
 
     // All mandatory questions answered - ask nice-to-have (only once each)
@@ -436,13 +567,13 @@ export class SubmissionsService {
     if (!currentSubmission.revenue && !analysis.revenue && (currentSubmission.totalClaimsCount !== null || analysis.totalClaimsCount !== undefined)) {
       if (/skip|none|no|don't know|not sure|prefer not/i.test(analysis.industryKeywords?.[0] || '')) {
         // User skipped revenue, we're done
-        return this.generateCompletionSummary(currentSubmission);
+        return attachAlcoholNote(this.generateCompletionSummary(currentSubmission));
       }
       return "**Final bonus question (optional):** What's your approximate annual revenue?\n\n(This helps us size your coverage appropriately. You can skip this by saying 'skip')";
     }
 
     // All done - show completion summary
-    return this.generateCompletionSummary(currentSubmission);
+    return attachAlcoholNote(this.generateCompletionSummary(currentSubmission));
   }
 
   /**
@@ -461,6 +592,21 @@ export class SubmissionsService {
     }
     if (submission.industryLabel) {
       summary.push(`• **Industry:** ${submission.industryLabel}`);
+    }
+    if (submission.alcoholServiceStatus) {
+      const statusLabel =
+        submission.alcoholServiceStatus === 'yes'
+          ? 'Serves alcohol'
+          : submission.alcoholServiceStatus === 'no'
+          ? 'Does not serve alcohol'
+          : 'Alcohol service: not sure';
+      let alcoholLine = `• **Alcohol exposure:** ${statusLabel}`;
+      if (submission.alcoholSalesPercentage !== null && submission.alcoholSalesPercentage !== undefined) {
+        alcoholLine += ` (≈${Number(submission.alcoholSalesPercentage).toFixed(0)}% of sales)`;
+      } else if (submission.alcoholSalesInfoStatus === 'unknown') {
+        alcoholLine += ' (percentage unknown)';
+      }
+      summary.push(alcoholLine);
     }
     if (submission.insuranceNeeds) {
       const needs = submission.insuranceNeeds.split(',').map((n: string) => 

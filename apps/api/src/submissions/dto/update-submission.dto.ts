@@ -60,6 +60,21 @@ export class UpdateSubmissionDto extends PartialType(CreateSubmissionDto) {
   @IsString()
   insuranceNeeds?: string;
 
+  @ApiPropertyOptional({ description: 'Does the business sell alcohol? yes / no / unknown', example: 'yes' })
+  @IsOptional()
+  @IsString()
+  alcoholServiceStatus?: 'yes' | 'no' | 'unknown';
+
+  @ApiPropertyOptional({ description: 'Approximate percent of revenue from alcohol sales', example: 25 })
+  @IsOptional()
+  @Type(() => Number)
+  alcoholSalesPercentage?: number | Decimal;
+
+  @ApiPropertyOptional({ description: 'Whether alcohol sales info is known or unknown', example: 'unknown' })
+  @IsOptional()
+  @IsString()
+  alcoholSalesInfoStatus?: 'unknown' | 'known';
+
   @ApiPropertyOptional({ description: 'Key assets: equipment, vehicles, property, IP', example: 'Fleet of 10 trucks, warehouse building' })
   @IsOptional()
   @IsString()

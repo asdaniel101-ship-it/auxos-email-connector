@@ -114,10 +114,21 @@ Let's get started! 🚀`;
     // Save user message (only for real user messages, not the start trigger)
     await this.svc.addChatMessage(id, 'user', body.message);
 
+    const lastAssistantMessage = submission.messages
+      ?.slice()
+      .reverse()
+      .find((msg) => msg.role === 'assistant');
+    const isRespondingToCoveragePrompt =
+      !!lastAssistantMessage &&
+      /coverage package look good|add\/remove any coverages|coverage package/i.test(
+        lastAssistantMessage.content.toLowerCase(),
+      );
+
     // Check if user is accepting recommended coverages
     if (/looks good|sounds good|perfect|yes|that works|correct|right|approve|okay|ok/i.test(body.message.toLowerCase()) &&
         submission.industryCode && submission.employeeCount &&
-        !submission.insuranceNeeds) {
+        !submission.insuranceNeeds &&
+        isRespondingToCoveragePrompt) {
 
       // Get recommended coverages for the detected industry
       const industryKeyword = submission.industryLabel?.toLowerCase().includes('construction') ? 'construction' :
@@ -173,6 +184,15 @@ Let's get started! 🚀`;
     }
     if (analysis.growthPlans) {
       updateData.growthPlans = analysis.growthPlans;
+    }
+    if (analysis.alcoholServiceStatus) {
+      updateData.alcoholServiceStatus = analysis.alcoholServiceStatus;
+    }
+    if (analysis.alcoholSalesPercentage !== undefined) {
+      updateData.alcoholSalesPercentage = analysis.alcoholSalesPercentage;
+    }
+    if (analysis.alcoholSalesInfoStatus) {
+      updateData.alcoholSalesInfoStatus = analysis.alcoholSalesInfoStatus;
     }
     
     // Nice to have fields
