@@ -136,9 +136,20 @@ export default function SubmissionQuotePage() {
   async function saveQuote() {
     setSaving(true);
     try {
-      // Here you would save the quote to your backend
-      // For now, we'll just simulate a save
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Save quote data and mark submission as quoted
+      const response = await fetch(`${API}/submissions/${submissionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'quoted',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update submission status');
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       setShowSuccess(true);
       setTimeout(() => {
@@ -177,28 +188,7 @@ export default function SubmissionQuotePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <Link href={`/carrier/submissions/${submissionId}`} className="text-blue-600 hover:text-blue-800 text-sm mb-2 inline-block">
-                ← Back to Submission Review
-              </Link>
-              <h1 className="text-3xl font-bold text-gray-900">{submission.businessName}</h1>
-              <p className="text-gray-600 mt-1">Insurance Quote</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-500">Quote Generation</span>
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-medium">C</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <div className="min-h-full bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Submission Summary */}
         <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">

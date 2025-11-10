@@ -196,10 +196,10 @@ export default function IntakePage() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Get Your Insurance Quote
+            Start your BrokerZero submission
           </h1>
           <p className="text-lg text-gray-600">
-            Tell us about your business, and we&apos;ll help you find the right coverage.
+            Tell us about your business so BrokerZero can connect you with the right coverage partners.
           </p>
         </div>
 
