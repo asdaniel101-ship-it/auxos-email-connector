@@ -7,6 +7,7 @@ import { SubmissionsModule } from './submissions/submissions.module';
 import { FilesModule } from './files/files.module';
 import { ExtractedFieldsController } from './extracted-fields/extracted-fields.controller';
 import { DocumentsController } from './documents/documents.controller';
+import { FieldDefinitionsModule } from './field-definitions/field-definitions.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { DocumentsController } from './documents/documents.controller';
     PrismaModule,
     SubmissionsModule,
     FilesModule,
+    FieldDefinitionsModule,
   ],
   controllers: [
     AppController,

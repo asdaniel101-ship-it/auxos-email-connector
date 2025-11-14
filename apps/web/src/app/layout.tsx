@@ -26,9 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50 text-slate-900`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50 text-slate-900`}>
         <div className="min-h-screen flex flex-col">
           <header className="bg-white border-b border-slate-200">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -54,6 +52,9 @@ export default function RootLayout({
                 <Link href="/carrier" className="hover:text-slate-900 transition-colors">
                   Carrier Portal
                 </Link>
+                <Link href="/admin" className="text-slate-400 hover:text-slate-700 transition-colors">
+                  Admin
+                </Link>
                 <Link
                   href="/request-demo"
                   className="px-4 py-2 rounded-full bg-slate-900 text-white hover:bg-slate-800 transition-colors font-semibold"
@@ -72,6 +73,10 @@ export default function RootLayout({
                   <span className="text-slate-300">•</span>
                   <Link href="/carrier" className="hover:text-slate-900 transition-colors">
                     Carrier Portal
+                  </Link>
+                  <span className="text-slate-300">•</span>
+                  <Link href="/admin" className="text-slate-400 hover:text-slate-700 transition-colors">
+                    Admin
                   </Link>
                 </div>
               </div>

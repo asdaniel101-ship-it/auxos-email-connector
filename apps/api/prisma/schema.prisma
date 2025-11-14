@@ -7,6 +7,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum FieldValueType {
+  string
+  number
+  decimal
+  boolean
+  text
+}
+
 model Submission {
   id              String        @id @default(cuid())
   
@@ -173,4 +181,20 @@ model ExtractedField {
   @@index([documentId])
   @@index([fieldName])
   @@unique([documentId, fieldName]) // One extraction per field per document
+}
+
+model FieldDefinition {
+  id                    String           @id @default(cuid())
+  fieldName             String           @unique
+  category              String
+  fieldType             FieldValueType
+  enteredFieldKey       String?
+  chatFieldKey          String?
+  documentFieldKey      String?
+  businessDescription   String?          @db.Text
+  extractorLogic        String?          @db.Text
+  documentSources       String[]         @default([])
+  alternateFieldNames   String[]         @default([])
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
 }
