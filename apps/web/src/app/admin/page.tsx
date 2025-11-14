@@ -285,9 +285,6 @@ export default function AdminFieldDefinitionsPage() {
                   <thead className="bg-gray-50">
                     <tr className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                       <th className="px-4 py-3">Field name</th>
-                      <th className="px-4 py-3">Entered field value</th>
-                      <th className="px-4 py-3">Chat field value</th>
-                      <th className="px-4 py-3">Document field value</th>
                       <th className="px-4 py-3">Field type</th>
                       <th className="px-4 py-3">Business description</th>
                       <th className="px-4 py-3">Extractor logic</th>
@@ -316,33 +313,6 @@ export default function AdminFieldDefinitionsPage() {
                                 className="mt-1 w-48 rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               />
                             </label>
-                          </td>
-                          <td className="px-4 py-3">
-                            <input
-                              type="text"
-                              value={record.enteredFieldKey ?? ''}
-                              onChange={(event) => handleChange(rowIndex, 'enteredFieldKey', event.target.value)}
-                              className="w-40 rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              placeholder="submission field key"
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            <input
-                              type="text"
-                              value={record.chatFieldKey ?? ''}
-                              onChange={(event) => handleChange(rowIndex, 'chatFieldKey', event.target.value)}
-                              className="w-40 rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              placeholder="chat key"
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            <input
-                              type="text"
-                              value={record.documentFieldKey ?? ''}
-                              onChange={(event) => handleChange(rowIndex, 'documentFieldKey', event.target.value)}
-                              className="w-44 rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              placeholder="extraction key"
-                            />
                           </td>
                           <td className="px-4 py-3">
                             <select
