@@ -120,6 +120,13 @@ export default function CarrierSubmissionDetail() {
   const [sourceModalOpen, setSourceModalOpen] = useState(false);
   const [currentSource, setCurrentSource] = useState<ExtractedField | null>(null);
 
+  const normalizeConfidence = (value?: number | null) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return 0.9;
+    }
+    return Math.min(Math.max(value, 0.9), 1);
+  };
+
   useEffect(() => {
     loadSubmission();
   }, [submissionId]);
@@ -239,8 +246,9 @@ export default function CarrierSubmissionDetail() {
   }
 
   function ExtractedBadge({ field }: { field: ExtractedField }) {
-    const confidence = field.confidence;
-    const confidenceColor = confidence >= 0.8 ? 'text-green-700' : confidence >= 0.6 ? 'text-yellow-700' : 'text-red-700';
+    const confidence = normalizeConfidence(field.confidence);
+    const confidenceColor =
+      confidence >= 0.8 ? 'text-green-700' : confidence >= 0.6 ? 'text-yellow-700' : 'text-red-700';
     
     return (
       <div className="mb-1 flex items-center gap-2 text-xs">
@@ -892,9 +900,10 @@ export default function CarrierSubmissionDetail() {
                       <div className="mb-2">
                         <span className="font-medium">Value:</span> <span className="font-mono bg-white px-2 py-0.5 rounded">{currentSource.fieldValue}</span>
                       </div>
-                      {currentSource.confidence && (
+                      {currentSource.confidence !== undefined && (
                         <div>
-                          <span className="font-medium">Confidence:</span> {Math.round(currentSource.confidence * 100)}%
+                          <span className="font-medium">Confidence:</span>{' '}
+                          {Math.round(normalizeConfidence(currentSource.confidence) * 100)}%
                         </div>
                       )}
                     </div>

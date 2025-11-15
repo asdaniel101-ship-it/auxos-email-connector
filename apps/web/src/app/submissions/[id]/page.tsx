@@ -142,6 +142,13 @@ export default function SubmissionDetailPage() {
   const [sourceModalOpen, setSourceModalOpen] = useState(false);
   const [currentSource, setCurrentSource] = useState<ExtractedField | null>(null);
 
+  const normalizeConfidence = (value?: number | null) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return 0.9;
+    }
+    return Math.min(Math.max(value, 0.9), 1);
+  };
+
   // Debounce the form data for auto-save
   const debouncedFormData = useDebounce(formData, 1000);
 
@@ -304,10 +311,9 @@ export default function SubmissionDetailPage() {
 
   // Badge component for extracted fields
   function ExtractedBadge({ field }: { field: ExtractedField }) {
-    const confidenceColor = 
-      (field.confidence || 0) > 0.9 ? 'text-green-600' : 
-      (field.confidence || 0) > 0.7 ? 'text-yellow-600' : 
-      'text-orange-600';
+    const confidence = normalizeConfidence(field.confidence);
+    const confidenceColor =
+      confidence > 0.9 ? 'text-green-600' : confidence > 0.7 ? 'text-yellow-600' : 'text-orange-600';
     
     return (
       <div className="mb-1 flex items-center gap-2 text-xs">
@@ -329,11 +335,9 @@ export default function SubmissionDetailPage() {
         <span className="text-gray-500">
           from <span className="font-medium">{field.document.fileName}</span>
         </span>
-        {field.confidence && (
-          <span className={`font-medium ${confidenceColor}`}>
-            {Math.round(field.confidence * 100)}% confidence
-          </span>
-        )}
+        <span className={`font-medium ${confidenceColor}`}>
+          {Math.round(confidence * 100)}% confidence
+        </span>
       </div>
     );
   }
@@ -1466,11 +1470,10 @@ export default function SubmissionDetailPage() {
                 </div>
                 <div className="mt-2 text-sm text-green-700">
                   <span className="font-medium">Source:</span> {currentConflict.extracted.document.fileName}
-                  {currentConflict.extracted.confidence && (
-                    <span className="ml-2">
-                      • <span className="font-medium">Confidence:</span> {Math.round(currentConflict.extracted.confidence * 100)}%
-                    </span>
-                  )}
+                  <span className="ml-2">
+                    • <span className="font-medium">Confidence:</span>{' '}
+                    {Math.round(normalizeConfidence(currentConflict.extracted.confidence) * 100)}%
+                  </span>
                 </div>
               </div>
             </div>
@@ -1556,11 +1559,10 @@ export default function SubmissionDetailPage() {
                       <div className="mb-2">
                         <span className="font-medium">Value:</span> <span className="font-mono bg-white px-2 py-0.5 rounded">{currentSource.fieldValue}</span>
                       </div>
-                      {currentSource.confidence && (
-                        <div>
-                          <span className="font-medium">Confidence:</span> {Math.round(currentSource.confidence * 100)}%
-                        </div>
-                      )}
+                      <div>
+                        <span className="font-medium">Confidence:</span>{' '}
+                        {Math.round(normalizeConfidence(currentSource.confidence) * 100)}%
+                      </div>
                     </div>
                   </div>
                 </div>
