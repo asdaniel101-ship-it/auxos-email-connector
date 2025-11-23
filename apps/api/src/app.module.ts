@@ -11,6 +11,7 @@ import { FilesModule } from './files/files.module';
 import { ExtractedFieldsController } from './extracted-fields/extracted-fields.controller';
 import { DocumentsModule } from './documents/documents.module';
 import { FieldDefinitionsModule } from './field-definitions/field-definitions.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { FieldDefinitionsModule } from './field-definitions/field-definitions.mo
     FilesModule,
     DocumentsModule,
     FieldDefinitionsModule,
+    EmailModule,
   ],
   controllers: [
     AppController,

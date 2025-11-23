@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateSessionDto } from './dto/create-session.dto';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class SessionsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+  ) {}
 
   async create(data: CreateSessionDto) {
     // Create session and lead together
@@ -51,6 +55,29 @@ export class SessionsService {
         },
       },
     });
+
+    // Send intake email notification
+    try {
+      await this.emailService.sendIntakeEmail(session.id, {
+        sessionId: session.id,
+        vertical: data.vertical,
+        businessType: data.businessType,
+        businessName: data.businessName,
+        ownerName: data.ownerName,
+        email: data.email,
+        phone: data.phone,
+        address: data.address,
+        city: data.city,
+        state: data.state,
+        zip: data.zip,
+        howDidYouHear: data.howDidYouHear,
+        desiredCoverages: data.desiredCoverages,
+        activelyLookingForInsurance: data.activelyLookingForInsurance,
+      });
+    } catch (error) {
+      console.error('Failed to send intake email:', error);
+      // Don't fail the request if email fails
+    }
 
     return session;
   }

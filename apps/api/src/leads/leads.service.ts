@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class LeadsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+  ) {}
 
   async findOne(id: string) {
     const lead = await this.prisma.lead.findUnique({
@@ -66,10 +70,46 @@ export class LeadsService {
   }
 
   async markReadyForMatch(leadId: string) {
-    return this.prisma.lead.update({
+    // Get full lead data with session and extracted fields for email
+    const lead = await this.prisma.lead.findUnique({
+      where: { id: leadId },
+      include: {
+        session: true,
+        extractedFields: {
+          include: {
+            document: {
+              select: {
+                fileName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!lead) {
+      throw new NotFoundException(`Lead with ID ${leadId} not found`);
+    }
+
+    // Update lead status
+    const updated = await this.prisma.lead.update({
       where: { id: leadId },
       data: { status: 'READY_FOR_MATCH' },
     });
+
+    // Send submission email notification with full lead data
+    try {
+      await this.emailService.sendSubmissionEmail(leadId, {
+        lead: { ...lead, status: updated.status }, // Use full lead data with updated status
+        session: lead.session,
+        extractedFields: lead.extractedFields,
+      });
+    } catch (error) {
+      console.error('Failed to send submission email:', error);
+      // Don't fail the request if email fails
+    }
+
+    return updated;
   }
 
   private getRequiredFields(vertical: string): string[] {
