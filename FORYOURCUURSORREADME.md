@@ -1,4 +1,4 @@
-# FORYOURCUURSORREADME
+# FORYOURCURSORREADME
 
 Welcome to BrokerZero inside Cursor! This doc gives you a patient, step-by-step walkthrough of everything you need to know to work on the project—even if you’ve never touched it before.
 

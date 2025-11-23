@@ -6,8 +6,8 @@ const {
   downloadFile,
   extractPdfText,
   searchTextInDocument,
-  getSubmissionFromAPI,
-  updateSubmissionViaAPI,
+  getSessionFromAPI,
+  getLeadFromAPI,
   loadExtractionConfig,
   classifyDocument,
   extractFields,
@@ -19,27 +19,19 @@ const {
 });
 
 /**
- * Example workflow: handles submission processing
- */
-export async function submissionWorkflow(submissionId: string): Promise<string> {
-  const result = await ping();
-  return `Processed submission ${submissionId}: ${result}`;
-}
-
-/**
  * Document extraction workflow
  * Orchestrates the complete extraction process for a single document
  */
 export async function extractDocumentWorkflow(args: { 
   documentId: string; 
-  submissionId: string;
+  sessionId: string;
 }): Promise<{
   success: boolean;
   documentType: string | null;
   fieldsExtracted: number;
   error?: string;
 }> {
-  const { documentId, submissionId } = args;
+  const { documentId, sessionId } = args;
   
   try {
     console.log(`Starting extraction for document ${documentId}`);
@@ -76,13 +68,19 @@ export async function extractDocumentWorkflow(args: {
     const extractedFields = await extractFields(text, config, documentType);
     console.log(`Extracted ${extractedFields.length} fields`);
     
-    // Step 7: Save extracted fields to database
+    // Step 7: Get session to find lead ID
+    const session = await getSessionFromAPI(sessionId);
+    if (!session.lead) {
+      throw new Error('Session does not have an associated lead');
+    }
+    
+    // Step 8: Save extracted fields to database
     console.log(`Saving extracted fields`);
-    const savedCount = await saveExtractedFields(submissionId, documentId, extractedFields);
+    const savedCount = await saveExtractedFields(session.lead.id, documentId, extractedFields);
     console.log(`Saved ${savedCount} fields to database`);
     
-    // Step 8: Update document status to completed
-    await updateDocumentStatus(documentId, 'completed', documentType);
+    // Step 9: Update document status to completed
+    await updateDocumentStatus(documentId, 'processed', documentType);
     
     return {
       success: true,
@@ -107,27 +105,27 @@ export async function extractDocumentWorkflow(args: {
 }
 
 /**
- * Legacy workflow for extracting all documents in a submission
+ * Workflow for extracting all documents in a session
  */
-export async function extractSubmissionDocsWorkflow(args: { submissionId: string }): Promise<any> {
-  const { submissionId } = args;
+export async function extractSessionDocsWorkflow(args: { sessionId: string }): Promise<any> {
+  const { sessionId } = args;
   
-  // Get submission to find all documents
-  const submission = await getSubmissionFromAPI(submissionId);
+  // Get session to find all documents
+  const session = await getSessionFromAPI(sessionId);
   
   const results = [];
   
   // Process each document
-  for (const doc of submission.documents || []) {
+  for (const doc of session.documents || []) {
     const result = await extractDocumentWorkflow({
       documentId: doc.id,
-      submissionId,
+      sessionId,
     });
     results.push(result);
   }
   
   return {
-    submissionId,
+    sessionId,
     documentsProcessed: results.length,
     results,
   };

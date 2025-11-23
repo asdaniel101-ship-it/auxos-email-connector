@@ -139,13 +139,9 @@ function buildFieldDefinitions() {
 }
 
 async function main() {
-  await prisma.submission.createMany({
-    data: [
-      { businessName: 'Acme Plumbing' },
-      { businessName: 'Blue Oak Landscapes' },
-    ],
-    skipDuplicates: true,
-  });
+  // Old submission seeding removed - using new Session/Lead model
+  // If you need test data, create sessions instead:
+  // await prisma.session.create({ ... })
 
   const fieldDefinitions = buildFieldDefinitions();
 
@@ -155,6 +151,28 @@ async function main() {
       skipDuplicates: true,
     });
   }
+
+  // Create demo partner for testing
+  const demoPartner = await prisma.partner.upsert({
+    where: { id: 'demo-partner-001' },
+    update: {},
+    create: {
+      id: 'demo-partner-001',
+      name: 'Demo Insurance Broker',
+      contactEmail: 'demo@insurance-broker.com',
+      verticals: ['insurance'],
+      statesServed: ['CA', 'NY', 'TX', 'FL'],
+      preferredIndustries: ['restaurant', 'retail', 'services'],
+      minEmployeeCount: 1,
+      maxEmployeeCount: 100,
+      minRevenue: 50000,
+      maxRevenue: 10000000,
+      coverageTypesInterested: ['GL', 'WC', 'BOP', 'Auto'],
+      averageLeadValueEstimate: 500,
+    },
+  });
+
+  console.log('Demo partner created:', demoPartner.id);
 }
 
 main().finally(() => prisma.$disconnect());

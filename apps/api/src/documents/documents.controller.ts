@@ -1,11 +1,27 @@
-import { Body, Controller, Param, Patch, Get } from '@nestjs/common';
+import { Body, Controller, Param, Patch, Get, Post } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
-import { PrismaService } from '../prisma.service';
+import { DocumentsService } from './documents.service';
 
 @ApiTags('documents')
 @Controller('documents')
 export class DocumentsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly documentsService: DocumentsService) {}
+
+  @Post('upload')
+  @ApiOperation({ summary: 'Create a document record after upload' })
+  @ApiResponse({ status: 201, description: 'Document created successfully' })
+  async create(
+    @Body() body: {
+      sessionId: string;
+      fileName: string;
+      fileKey: string;
+      fileSize: number;
+      mimeType: string;
+      docType?: string;
+    }
+  ) {
+    return this.documentsService.create(body);
+  }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get document by ID' })
@@ -13,12 +29,7 @@ export class DocumentsController {
   @ApiResponse({ status: 200, description: 'Returns the document' })
   @ApiResponse({ status: 404, description: 'Document not found' })
   async findOne(@Param('id') id: string) {
-    return this.prisma.document.findUnique({
-      where: { id },
-      include: {
-        extractedFields: true,
-      },
-    });
+    return this.documentsService.findOne(id);
   }
 
   @Patch(':id')
@@ -29,14 +40,11 @@ export class DocumentsController {
     @Param('id') id: string,
     @Body() body: {
       processingStatus?: string;
-      documentType?: string;
+      docType?: string;
       processingError?: string;
     }
   ) {
-    return this.prisma.document.update({
-      where: { id },
-      data: body,
-    });
+    return this.documentsService.update(id, body);
   }
 }
 

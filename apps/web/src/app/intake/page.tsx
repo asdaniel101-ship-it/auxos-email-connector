@@ -196,10 +196,10 @@ export default function IntakePage() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Start your BrokerZero submission
+            Start your Auxo submission
           </h1>
           <p className="text-lg text-gray-600">
-            Tell us about your business so BrokerZero can connect you with the right coverage partners.
+            Tell us about your business so Auxo can connect you with the right coverage partners.
           </p>
         </div>
 

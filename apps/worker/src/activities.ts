@@ -2,9 +2,23 @@ import * as Minio from 'minio';
 import { Readable } from 'stream';
 import * as fs from 'fs';
 import * as path from 'path';
+import OpenAI from 'openai';
+import { extractFieldsWithLLM, mapFieldNameToLeadModel } from './llm-extraction';
 
 // pdf-parse is a CommonJS module - PDFParse is a class
 const { PDFParse } = require('pdf-parse');
+
+// Initialize OpenAI client
+let openaiClient: OpenAI | null = null;
+function getOpenAIClient(): OpenAI | null {
+  if (!openaiClient) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (apiKey) {
+      openaiClient = new OpenAI({ apiKey });
+    }
+  }
+  return openaiClient;
+}
 
 // Types
 interface ExtractionConfig {
@@ -107,35 +121,31 @@ export async function searchTextInDocument(
 }
 
 /**
- * Get submission data from database (via API)
+ * Get session data from database (via API)
  * In production, you'd use Prisma directly or a database connection
  */
-export async function getSubmissionFromAPI(submissionId: string): Promise<any> {
+export async function getSessionFromAPI(sessionId: string): Promise<any> {
   const apiUrl = process.env.API_URL || 'http://localhost:4000';
   
-  const response = await fetch(`${apiUrl}/submissions/${submissionId}`);
+  const response = await fetch(`${apiUrl}/sessions/${sessionId}`);
   
   if (!response.ok) {
-    throw new Error(`Failed to fetch submission: ${response.statusText}`);
+    throw new Error(`Failed to fetch session: ${response.statusText}`);
   }
 
   return response.json();
 }
 
 /**
- * Update submission via API
+ * Get lead data from database (via API)
  */
-export async function updateSubmissionViaAPI(submissionId: string, data: any): Promise<any> {
+export async function getLeadFromAPI(leadId: string): Promise<any> {
   const apiUrl = process.env.API_URL || 'http://localhost:4000';
   
-  const response = await fetch(`${apiUrl}/submissions/${submissionId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-
+  const response = await fetch(`${apiUrl}/leads/${leadId}`);
+  
   if (!response.ok) {
-    throw new Error(`Failed to update submission: ${response.statusText}`);
+    throw new Error(`Failed to fetch lead: ${response.statusText}`);
   }
 
   return response.json();
@@ -178,13 +188,31 @@ export async function classifyDocument(text: string, config: ExtractionConfig): 
 }
 
 /**
- * Extract fields from document text based on configuration
+ * Extract fields from document text using LLM (primary) with fallback to regex/keyword matching
  */
 export async function extractFields(
   text: string,
   config: ExtractionConfig,
   documentType: string | null
 ): Promise<ExtractedFieldData[]> {
+  const openai = getOpenAIClient();
+  
+  // Try LLM extraction first (if OpenAI is available)
+  if (openai) {
+    try {
+      console.log('Using LLM for field extraction...');
+      const llmExtracted = await extractFieldsWithLLM(text, config, documentType, openai);
+      if (llmExtracted.length > 0) {
+        console.log(`LLM extracted ${llmExtracted.length} fields`);
+        return llmExtracted;
+      }
+    } catch (error) {
+      console.error('LLM extraction failed, falling back to regex/keyword matching:', error);
+    }
+  }
+
+  // Fallback to regex/keyword matching
+  console.log('Using regex/keyword matching for field extraction...');
   const extractedFields: ExtractedFieldData[] = [];
 
   for (const [fieldName, fieldConfig] of Object.entries(config.fieldExtractionInstructions)) {
@@ -192,6 +220,9 @@ export async function extractFields(
     if (documentType && !fieldConfig.documentTypes.includes(documentType)) {
       continue;
     }
+
+    // Map to Lead model field name
+    const leadFieldName = mapFieldNameToLeadModel(fieldName);
 
     let foundValue: string | null = null;
     let confidence = 0;
@@ -239,14 +270,14 @@ export async function extractFields(
       }
     }
 
-    // Add to results if we found something
+    // Add to results if we found something (using Lead model field name)
     if (foundValue) {
       extractedFields.push({
-        fieldName,
+        fieldName: leadFieldName, // Use mapped field name
         fieldValue: foundValue,
         confidence,
-        source: 'Document text extraction',
-        extractedText: extractedText.substring(0, 1000), // Increased limit to 1000 chars for context
+        source: 'Document text extraction (regex/keyword)',
+        extractedText: extractedText.substring(0, 1000),
       });
     }
   }
@@ -258,7 +289,7 @@ export async function extractFields(
  * Save extracted fields to database
  */
 export async function saveExtractedFields(
-  submissionId: string,
+  leadId: string,
   documentId: string,
   fields: ExtractedFieldData[]
 ): Promise<number> {
@@ -271,7 +302,7 @@ export async function saveExtractedFields(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          submissionId,
+          leadId,
           documentId,
           ...field,
         }),
@@ -296,13 +327,13 @@ export async function saveExtractedFields(
 export async function updateDocumentStatus(
   documentId: string,
   status: string,
-  documentType?: string | null,
+  docType?: string | null,
   error?: string
 ): Promise<void> {
   const apiUrl = process.env.API_URL || 'http://localhost:4000';
   const updateData: any = { processingStatus: status };
   
-  if (documentType) updateData.documentType = documentType;
+  if (docType) updateData.docType = docType;
   if (error) updateData.processingError = error;
 
   const response = await fetch(`${apiUrl}/documents/${documentId}`, {

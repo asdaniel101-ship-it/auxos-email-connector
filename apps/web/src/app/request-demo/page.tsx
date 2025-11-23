@@ -30,23 +30,19 @@ export default function RequestDemoPage() {
           <div className="grid md:grid-cols-[0.9fr_1.1fr]">
             <div className="bg-slate-900 text-white p-8 lg:p-12 flex flex-col justify-between">
               <div>
-                <p className="uppercase tracking-[0.35em] text-xs text-slate-300 mb-6">BrokerZero</p>
+                <p className="uppercase tracking-[0.35em] text-xs text-slate-300 mb-6">Auxo</p>
                 <h1 className="text-3xl font-semibold leading-tight">
-                  Let&apos;s show you how an AI-native brokerage operates.
+                  Let&apos;s show you how Auxo works.
                 </h1>
                 <p className="mt-6 text-slate-200">
                   Share a few details and our team will reach out to schedule a tailored walkthrough. We&apos;ll cover
-                  intake, document intelligence, underwriting collaboration, and rollout best practices.
+                  chat-driven intake, document extraction, lead matching, and partner workflows.
                 </p>
               </div>
               <div className="mt-12 text-sm text-slate-400">
-                Already a customer?{" "}
-                <Link href="/carrier" className="underline hover:text-white">
-                  Access the carrier workspace
-                </Link>{" "}
-                or{" "}
-                <Link href="/intake" className="underline hover:text-white">
-                  manage submissions
+                Already a partner?{" "}
+                <Link href="/partners/dashboard" className="underline hover:text-white">
+                  Access the partner portal
                 </Link>
                 .
               </div>
@@ -57,7 +53,7 @@ export default function RequestDemoPage() {
                 <div className="bg-green-50 border border-green-200 text-green-800 rounded-xl p-6">
                   <h2 className="text-xl font-semibold mb-2">Thanks! We&apos;ll be in touch shortly.</h2>
                   <p className="text-sm text-green-700">
-                    A member of the BrokerZero team will reach out to coordinate a live demo tailored to your brokerage
+                    A member of the Auxo team will reach out to coordinate a live demo tailored to your brokerage
                     or carrier workflow.
                   </p>
                 </div>

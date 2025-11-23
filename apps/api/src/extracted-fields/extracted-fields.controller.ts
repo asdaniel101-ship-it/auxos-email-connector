@@ -11,23 +11,24 @@ export class ExtractedFieldsController {
   @ApiOperation({ summary: 'Save an extracted field from document processing' })
   @ApiResponse({ status: 201, description: 'Field saved successfully' })
   async create(@Body() body: {
-    submissionId: string;
-    documentId: string;
+    leadId: string;
+    documentId?: string;
     fieldName: string;
     fieldValue: string;
     confidence?: number;
     source?: string;
     extractedText?: string;
   }) {
-    // Check if this field already exists for this document
-    const existing = await this.prisma.extractedField.findUnique({
-      where: {
-        documentId_fieldName: {
-          documentId: body.documentId,
-          fieldName: body.fieldName,
-        },
-      },
-    });
+    // Check if this field already exists for this document/lead
+    const existing = body.documentId
+      ? await this.prisma.extractedField.findFirst({
+          where: {
+            leadId: body.leadId,
+            documentId: body.documentId,
+            fieldName: body.fieldName,
+          },
+        })
+      : null;
 
     if (existing) {
       // Update existing
@@ -45,8 +46,8 @@ export class ExtractedFieldsController {
     // Create new
     return this.prisma.extractedField.create({
       data: {
-        submissionId: body.submissionId,
-        documentId: body.documentId,
+        leadId: body.leadId,
+        documentId: body.documentId || null,
         fieldName: body.fieldName,
         fieldValue: body.fieldValue,
         confidence: body.confidence,

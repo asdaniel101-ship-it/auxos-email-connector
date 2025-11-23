@@ -25,8 +25,8 @@ async function bootstrap() {
 
   // Swagger API documentation
   const config = new DocumentBuilder()
-    .setTitle('Insurance API')
-    .setDescription('Internal API for submissions and workflows')
+    .setTitle('Auxo API')
+    .setDescription('API for restaurant intake, lead management, and partner matching')
     .setVersion('0.1.0')
     .build();
   const document = SwaggerModule.createDocument(app, config);

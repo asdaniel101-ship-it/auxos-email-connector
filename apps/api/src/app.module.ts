@@ -3,24 +3,30 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma.module';
-import { SubmissionsModule } from './submissions/submissions.module';
+import { SessionsModule } from './sessions/sessions.module';
+import { LeadsModule } from './leads/leads.module';
+import { ChatModule } from './chat/chat.module';
+import { PartnersModule } from './partners/partners.module';
 import { FilesModule } from './files/files.module';
 import { ExtractedFieldsController } from './extracted-fields/extracted-fields.controller';
-import { DocumentsController } from './documents/documents.controller';
+import { DocumentsModule } from './documents/documents.module';
 import { FieldDefinitionsModule } from './field-definitions/field-definitions.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
-    SubmissionsModule,
+    SessionsModule,
+    LeadsModule,
+    ChatModule,
+    PartnersModule,
     FilesModule,
+    DocumentsModule,
     FieldDefinitionsModule,
   ],
   controllers: [
     AppController,
     ExtractedFieldsController,
-    DocumentsController,
   ],
   providers: [AppService],
 })
