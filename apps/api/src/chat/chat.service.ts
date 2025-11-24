@@ -253,6 +253,8 @@ CONVERSATION RULES:
 7. If user asks for recommendations, PROVIDE THEM - don't just repeat the question
 8. NEVER use field names in your questions - always use human-readable text. For example, ask "What is your current carrier?" NOT "Can you tell me about currentCarrier?"
 9. When asking about current carrier, use: "Do you currently have insurance? If so, what is your current carrier?" or "What is your current carrier?"
+10. CRITICAL: NEVER ask the same question twice. If a question was already asked (even if not answered), move to the next missing field. Check the conversation history to avoid duplicates.
+11. If information is not found or user skips, it's okay to leave it blank - don't ask again. Move to the next question.
 
 RESPONSE FORMAT (JSON only, no markdown):
 {
@@ -529,11 +531,13 @@ Response: {
                         userMsgLower.includes("none") || userMsgLower.includes("no insurance");
           
           if (saidNo) {
-            // User doesn't have insurance - move to next question, skip carrier/policy/premium
+            // User doesn't have insurance - set hasCurrentInsurance to false and move to next question
+            finalFieldUpdates.hasCurrentInsurance = false;
+            finalFieldUpdates.currentCarrier = null;
+            finalFieldUpdates.currentPolicyTypes = [];
+            finalFieldUpdates.currentPremiumTotal = null;
             const nextQuestion = this.getQuestionForField(nextField, context);
             response.message = `Got it. ${nextQuestion}`;
-            // Clear any carrier extraction that might have happened
-            delete finalFieldUpdates.currentCarrier;
           } else if (finalFieldUpdates.currentCarrier) {
             // User said "Yes, Chubb" - carrier was extracted, ask about policy types
             response.message = `Great! What types of coverage do you currently have? (e.g., General Liability, Workers Comp, BOP, Property Insurance)`;
@@ -748,8 +752,13 @@ Response: {
         // Check for "No" first
         if (msg === "no" || msg === "nope" || msg.includes("i don't have") || msg.includes("i dont have") ||
             msg.includes("none") || msg.includes("no insurance") || msg.includes("don't have insurance")) {
-          // User doesn't have insurance - return empty updates, skip carrier/policy/premium questions
-          return updates; // Let AI handle the response and move to next question
+          // User doesn't have insurance - set hasCurrentInsurance to false and mark as answered
+          updates.hasCurrentInsurance = false;
+          // Also explicitly set carrier/policy/premium to null to skip those questions
+          updates.currentCarrier = null;
+          updates.currentPolicyTypes = [];
+          updates.currentPremiumTotal = null;
+          return updates;
         }
         
         // If user says "Yes" or "Yes, [carrier]", extract carrier if provided
@@ -960,11 +969,45 @@ Response: {
    */
   private buildContext(session: any): any {
     const lead = session.lead || {};
-    const answered = this.getAnsweredQuestions(lead);
+    const answered = this.getAnsweredQuestions(lead, session.messages);
 
     // Get all fields that need to be collected
     const requiredFields = this.getAllRequiredFields(session.vertical, session.businessType);
-    const missingFields = requiredFields.filter(field => !answered[field.name]);
+    
+    // Also check conversation history to see if a question was already asked (even if not answered)
+    const askedFields = new Set<string>();
+    if (session.messages) {
+      session.messages.forEach((msg: any) => {
+        if (msg.role === 'assistant' && msg.content) {
+          const content = msg.content.toLowerCase();
+          if (content.includes('do you currently have insurance') && !content.includes('carrier')) {
+            askedFields.add('hasCurrentInsurance');
+          }
+          if (content.includes('current carrier') || content.includes('what is your current carrier')) {
+            askedFields.add('currentCarrier');
+          }
+          if (content.includes('current policy') || (content.includes('types of coverage') && content.includes('currently'))) {
+            askedFields.add('currentPolicyTypes');
+          }
+          if (content.includes('current premium') || content.includes('how much are you currently paying')) {
+            askedFields.add('currentPremiumTotal');
+          }
+        }
+      });
+    }
+    
+    // Filter out fields that are both answered AND already asked (to prevent duplicates)
+    const missingFields = requiredFields.filter(field => {
+      // If field is answered, it's not missing
+      if (answered[field.name]) {
+        return false;
+      }
+      // For optional fields that were already asked, don't ask again
+      if (!field.required && askedFields.has(field.name)) {
+        return false;
+      }
+      return true;
+    });
 
     return {
       vertical: session.vertical,
@@ -1107,7 +1150,7 @@ Response: {
     return descriptions[fieldName] || `Field: ${fieldName}`;
   }
 
-  private getAnsweredQuestions(lead: any): any {
+  private getAnsweredQuestions(lead: any, conversationHistory?: any[]): any {
     if (!lead) {
       return {};
     }
@@ -1135,6 +1178,7 @@ Response: {
       if (Array.isArray(value)) {
         answered[field] = value.length > 0;
       } else if (typeof value === 'boolean') {
+        // For boolean fields, mark as answered if it's explicitly set (true or false)
         answered[field] = value !== null && value !== undefined;
       } else {
         answered[field] = value !== null && value !== undefined && value !== '';
@@ -1145,8 +1189,24 @@ Response: {
     if (answered.currentCarrier) {
       answered.hasCurrentInsurance = true;
     }
-    // If user said "No" to insurance, mark hasCurrentInsurance as answered (we track this via currentCarrier being null but question was asked)
-    // We'll track this via conversation history check instead
+    
+    // Special handling: If hasCurrentInsurance is explicitly false, mark it as answered
+    if (lead.hasCurrentInsurance === false) {
+      answered.hasCurrentInsurance = true;
+    }
+    
+    // Check conversation history to see if question was asked (even if not answered)
+    if (conversationHistory) {
+      const hasAskedInsurance = conversationHistory.some(msg => 
+        msg.role === 'assistant' && 
+        msg.content && 
+        msg.content.toLowerCase().includes('do you currently have insurance')
+      );
+      if (hasAskedInsurance && lead.hasCurrentInsurance === null) {
+        // Question was asked but not explicitly answered - still mark as "asked" to prevent duplicate
+        // But don't mark as "answered" so it can still be asked if needed
+      }
+    }
 
     return answered;
   }
@@ -1213,6 +1273,9 @@ Response: {
           } else {
             updateData[key] = value;
           }
+        } else if (key === 'hasCurrentInsurance') {
+          // Handle boolean field - explicitly set to false if provided
+          updateData[key] = value === true || value === 'true' || value === 1;
         } else {
           updateData[key] = value;
         }
@@ -1225,5 +1288,73 @@ Response: {
         data: updateData,
       });
     }
+  }
+
+  async skipCurrentQuestion(sessionId: string) {
+    // Load session with lead and conversation history
+    const session = await this.prisma.session.findUnique({
+      where: { id: sessionId },
+      include: {
+        lead: true,
+        messages: {
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException(`Session with ID ${sessionId} not found`);
+    }
+
+    // Build context to determine what question to skip
+    const context = this.buildContext(session);
+    
+    // Get the last question asked
+    const lastQuestion = session.messages
+      .filter(m => m.role === 'assistant')
+      .slice(-1)[0]?.content || '';
+
+    // Determine which field was being asked about
+    const fieldSchema = this.getFieldSchemaForVertical(context.vertical, context.businessType);
+    const missingFields = context.missingFields || [];
+    const currentField = this.determineCurrentField(lastQuestion, missingFields, fieldSchema);
+    
+    // Get the next field to ask about (skip the current one)
+    const nextField = missingFields.find(f => f !== currentField) || null;
+    const nextQuestion = this.getQuestionForField(nextField, context);
+
+    // Save a user message indicating they skipped
+    await this.prisma.conversationMessage.create({
+      data: {
+        sessionId,
+        role: 'user',
+        content: '[Skipped]',
+      },
+    });
+
+    // Save assistant message with next question
+    const assistantMessage = await this.prisma.conversationMessage.create({
+      data: {
+        sessionId,
+        role: 'assistant',
+        content: nextQuestion || 'Is there anything else you\'d like to add?',
+      },
+    });
+
+    // Reload session to get updated messages
+    const updatedSession = await this.prisma.session.findUnique({
+      where: { id: sessionId },
+      include: {
+        lead: true,
+        messages: {
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    return {
+      message: assistantMessage.content,
+      messageId: assistantMessage.id,
+    };
   }
 }

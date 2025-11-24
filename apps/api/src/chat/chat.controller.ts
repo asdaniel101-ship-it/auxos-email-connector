@@ -32,6 +32,21 @@ export class ChatController {
     }
   }
 
+  @Post(':sessionId/skip')
+  @ApiOperation({ summary: 'Skip the current question' })
+  @ApiResponse({ status: 200, description: 'Question skipped successfully' })
+  async skipQuestion(@Param('sessionId') sessionId: string) {
+    try {
+      return await this.chatService.skipCurrentQuestion(sessionId);
+    } catch (error) {
+      console.error('Error skipping question:', error);
+      throw new HttpException(
+        error instanceof Error ? error.message : 'Failed to skip question',
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
   @Get(':sessionId')
   @ApiOperation({ summary: 'Get conversation history' })
   async getHistory(@Param('sessionId') sessionId: string) {

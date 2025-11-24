@@ -81,6 +81,55 @@ export default function IntakePage() {
     }
   };
 
+  const skipQuestion = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      const response = await fetch(`${API_URL}/chat/${sessionId}/skip`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error('Failed to skip question. Please try again.');
+      }
+
+      const data = await response.json();
+      
+      if (!data.message) {
+        throw new Error('Invalid response from server.');
+      }
+
+      const assistantMessage: Message = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: data.message,
+        createdAt: new Date().toISOString(),
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+      
+      // Reload session to get updated data
+      setTimeout(async () => {
+        await loadSession();
+      }, 500);
+    } catch (error) {
+      console.error('Error skipping question:', error);
+      setError(error instanceof Error ? error.message : 'Failed to skip question');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputMessage.trim() || isLoading) return;
@@ -226,80 +275,94 @@ export default function IntakePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 flex flex-col">
-      {/* Modern Header with gradient */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200/50 px-6 py-4 sticky top-0 z-20 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
-              {session.vertical === 'insurance' ? 'Insurance Intake' : 'Lending Intake'}
-            </h1>
-            <p className="text-sm text-slate-600 mt-0.5">
-              {session.businessType ? session.businessType.charAt(0).toUpperCase() + session.businessType.slice(1) : 'Business'} • {completionPercentage}% complete
-            </p>
-          </div>
-          {error && (
-            <div className="px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-              {error}
+      {/* Modern Header with gradient - aligned with main navbar */}
+      <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200/50 sticky top-0 z-20 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-bold text-slate-900 bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                {session.vertical === 'insurance' ? 'Insurance Intake' : 'Lending Intake'}
+              </h1>
+              <p className="text-sm text-slate-600 mt-0.5">
+                {session.businessType ? session.businessType.charAt(0).toUpperCase() + session.businessType.slice(1) : 'Business'} • {completionPercentage}% complete
+              </p>
             </div>
-          )}
+            {error && (
+              <div className="px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {error}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden relative">
         {/* Left: Chat - Modern Design */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0 mr-96">
+          {/* Disclaimer Banner */}
+          <div className="bg-blue-50 border-b border-blue-200/50">
+            <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+              <p className="text-sm text-blue-800 text-center">
+                💡 <strong>You're always welcome to skip any question</strong> or proceed straight to review if you'd like. We'll work with whatever information you provide.
+              </p>
+            </div>
+          </div>
+
           {/* Chat Messages Area */}
           <div 
             ref={chatContainerRef}
-            className="flex-1 overflow-y-auto px-6 py-6 space-y-4 bg-gradient-to-b from-transparent to-slate-50/50"
+            className="flex-1 overflow-y-auto bg-gradient-to-b from-transparent to-slate-50/50"
           >
-            {messages.length === 0 && (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center max-w-md">
-                  <div className="text-5xl mb-4 animate-pulse">💬</div>
-                  <h2 className="text-xl font-semibold text-slate-900 mb-2">Let's get started!</h2>
-                  <p className="text-slate-600">I'll ask you a few questions to help you get the best quotes.</p>
-                </div>
-              </div>
-            )}
-            
-            {messages.map((message, index) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-300`}
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                <div
-                  className={`max-w-2xl rounded-2xl px-5 py-3 shadow-sm transition-all hover:shadow-md ${
-                    message.role === 'user'
-                      ? 'bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-br-sm'
-                      : 'bg-white border border-slate-200/60 text-slate-900 rounded-bl-sm backdrop-blur-sm'
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap leading-relaxed text-[15px]">{message.content}</p>
-                  <p className={`text-xs mt-2 ${message.role === 'user' ? 'text-slate-300' : 'text-slate-400'}`}>
-                    {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-              </div>
-            ))}
-            
-            {isLoading && (
-              <div className="flex justify-start animate-in fade-in">
-                <div className="bg-white border border-slate-200/60 rounded-2xl rounded-bl-sm px-5 py-4 shadow-sm backdrop-blur-sm">
-                  <div className="flex space-x-2">
-                    <div className="w-2.5 h-2.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                    <div className="w-2.5 h-2.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                    <div className="w-2.5 h-2.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+              {messages.length === 0 && (
+                <div className="flex items-center justify-center h-full min-h-[400px]">
+                  <div className="text-center max-w-md">
+                    <div className="text-5xl mb-4 animate-pulse">💬</div>
+                    <h2 className="text-xl font-semibold text-slate-900 mb-2">Let's get started!</h2>
+                    <p className="text-slate-600">I'll ask you a few questions to help you get the best quotes.</p>
                   </div>
                 </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
+              )}
+              
+              {messages.map((message, index) => (
+                <div
+                  key={message.id}
+                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-300`}
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <div
+                    className={`max-w-2xl rounded-2xl px-5 py-3 shadow-sm transition-all hover:shadow-md ${
+                      message.role === 'user'
+                        ? 'bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-br-sm'
+                        : 'bg-white border border-slate-200/60 text-slate-900 rounded-bl-sm backdrop-blur-sm'
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap leading-relaxed text-[15px]">{message.content}</p>
+                    <p className={`text-xs mt-2 ${message.role === 'user' ? 'text-slate-300' : 'text-slate-400'}`}>
+                      {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              
+              {isLoading && (
+                <div className="flex justify-start animate-in fade-in">
+                  <div className="bg-white border border-slate-200/60 rounded-2xl rounded-bl-sm px-5 py-4 shadow-sm backdrop-blur-sm">
+                    <div className="flex space-x-2">
+                      <div className="w-2.5 h-2.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-2.5 h-2.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-2.5 h-2.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
           </div>
 
           {/* Modern Input Area */}
-          <div className="bg-white/80 backdrop-blur-sm border-t border-slate-200/50 px-6 py-4 shadow-lg">
+          <div className="bg-white/80 backdrop-blur-sm border-t border-slate-200/50 shadow-lg">
+            <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <form onSubmit={sendMessage} className="flex gap-3">
               <div className="flex-1 relative">
                 <input
@@ -321,6 +384,18 @@ export default function IntakePage() {
                 </div>
               </div>
               <button
+                type="button"
+                onClick={skipQuestion}
+                disabled={isLoading}
+                className="px-5 py-3 border-2 border-slate-300 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md disabled:hover:shadow-sm flex items-center gap-2"
+                title="Skip this question"
+              >
+                <span>Skip</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                </svg>
+              </button>
+              <button
                 type="submit"
                 disabled={isLoading || !inputMessage.trim()}
                 className="px-6 py-3 bg-gradient-to-r from-slate-900 to-slate-800 text-white font-semibold rounded-xl hover:from-slate-800 hover:to-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md disabled:hover:shadow-sm flex items-center gap-2"
@@ -340,11 +415,12 @@ export default function IntakePage() {
                 )}
               </button>
             </form>
+            </div>
           </div>
         </div>
 
-        {/* Right: Modern Sidebar */}
-        <div className="w-96 bg-white/80 backdrop-blur-sm border-l border-slate-200/50 flex flex-col fixed right-0 top-[73px] bottom-0 overflow-hidden z-10 shadow-lg">
+        {/* Right: Modern Sidebar - positioned below main header (py-5 = 40px + content ~45px + border 1px = ~86px) */}
+        <div className="w-96 bg-white/80 backdrop-blur-sm border-l border-slate-200/50 flex flex-col fixed right-0 bottom-0 overflow-hidden z-10 shadow-lg" style={{ top: '86px' }}>
           {/* Profile Completion Card */}
           <div className="p-6 border-b border-slate-200/50 flex-shrink-0 bg-gradient-to-br from-white to-slate-50/50">
             <div className="flex items-center justify-between mb-3">
