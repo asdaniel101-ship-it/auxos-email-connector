@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -38,19 +38,34 @@ interface Submission {
   }>;
 }
 
-export default function SubmissionReviewerPage() {
+function SubmissionReviewerContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedField, setSelectedField] = useState<FieldExtraction | null>(null);
+  const fromEmail = searchParams.get('fromEmail') === 'true';
+  const fieldParam = searchParams.get('field');
 
   useEffect(() => {
     if (params.id) {
       loadSubmission(params.id as string);
     }
   }, [params.id]);
+
+  // Auto-open field popup if field parameter is present
+  useEffect(() => {
+    if (submission && fieldParam && submission.extractionResult?.fieldExtractions) {
+      const extraction = submission.extractionResult.fieldExtractions.find(
+        fe => fe.fieldPath === fieldParam
+      );
+      if (extraction && extraction.fieldValue && extraction.documentChunk) {
+        setSelectedField(extraction);
+      }
+    }
+  }, [submission, fieldParam]);
 
   const loadSubmission = async (id: string) => {
     try {
@@ -188,13 +203,20 @@ export default function SubmissionReviewerPage() {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <Link href="/dashboard" className="text-blue-600 hover:text-blue-800 mb-2 inline-block">
-                ← Back to Dashboard
-              </Link>
+              {!fromEmail && (
+                <Link href="/dashboard" className="text-blue-600 hover:text-blue-800 mb-2 inline-block">
+                  ← Back to Dashboard
+                </Link>
+              )}
               <h1 className="text-3xl font-bold text-slate-900">Submission Reviewer</h1>
               <p className="text-slate-600 mt-2">
                 {submission.subject} • From: {submission.from}
               </p>
+              {fromEmail && (
+                <p className="text-sm text-slate-500 mt-1 italic">
+                  Viewing from email link. You can explore all fields below.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -215,8 +237,16 @@ export default function SubmissionReviewerPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {fields.map((field) => {
                     const extraction = getFieldExtraction(field.path);
-                    const hasValue = field.value !== null && field.value !== undefined && field.value !== '';
-                    const isClickable = hasValue && extraction && extraction.documentChunk;
+                    // Use extraction's fieldValue to determine if value was actually extracted
+                    // If extraction exists, use its fieldValue; otherwise fall back to field.value
+                    const displayValue = extraction?.fieldValue !== undefined ? extraction.fieldValue : field.value;
+                    const hasValue = displayValue !== null && displayValue !== undefined && displayValue !== '';
+                    // Only make fields clickable if they have a value AND have a chunk AND the extraction's fieldValue is not null
+                    // Null/empty fields should NOT be clickable (no value found, nothing to show)
+                    const source = extraction?.source || 'email_body';
+                    const extractionHasValue = extraction?.fieldValue !== null && extraction?.fieldValue !== undefined && extraction?.fieldValue !== '';
+                    const isClickable = hasValue && extraction && extraction.documentChunk && extractionHasValue;
+                    const hasExtraction = extraction !== undefined;
 
                     return (
                       <div
@@ -227,7 +257,9 @@ export default function SubmissionReviewerPage() {
                             : 'bg-slate-50 border-slate-200'
                         } ${isClickable ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
                         onClick={() => {
-                          if (isClickable && extraction) {
+                          // Only allow clicking if field has value and extraction has chunk
+                          // Also check that the extraction's fieldValue is not null/empty
+                          if (isClickable && extraction && extraction.documentChunk && extraction.fieldValue) {
                             setSelectedField(extraction);
                           }
                         }}
@@ -240,14 +272,13 @@ export default function SubmissionReviewerPage() {
                             <div className={`text-base font-medium ${
                               hasValue ? 'text-green-900' : 'text-slate-500 italic'
                             }`}>
-                              {formatValue(field.value)}
+                              {formatValue(displayValue)}
                             </div>
                           </div>
-                          {extraction && (
-                            <span className={`ml-2 px-2 py-1 text-xs font-semibold rounded-full ${getSourceColor(extraction.source)}`}>
-                              {extraction.source}
-                            </span>
-                          )}
+                          {/* Always show source badge */}
+                          <span className={`ml-2 px-2 py-1 text-xs font-semibold rounded-full ${getSourceColor(source)}`}>
+                            {source === 'email_body' ? 'Email' : source}
+                          </span>
                         </div>
                         {isClickable && (
                           <div className="mt-2 text-xs text-blue-600">
@@ -274,46 +305,66 @@ export default function SubmissionReviewerPage() {
             className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4">
+              <div className="flex items-start justify-between mb-3">
+                <button
+                  onClick={() => setSelectedField(null)}
+                  className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  Back to full submission
+                </button>
+                <button
+                  onClick={() => setSelectedField(null)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
               <div>
                 <h2 className="text-xl font-bold text-slate-900">
                   {selectedField.fieldName}
                 </h2>
                 <p className="text-sm text-slate-600 mt-1">
                   Source: <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getSourceColor(selectedField.source)}`}>
-                    {selectedField.source}
+                    {selectedField.source === 'email_body' ? 'Email' : selectedField.source}
                   </span>
                 </p>
               </div>
-              <button
-                onClick={() => setSelectedField(null)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
             </div>
 
             <div className="p-6 space-y-4">
               <div>
                 <h3 className="text-sm font-semibold text-slate-700 mb-2">Extracted Value</h3>
-                <div className="bg-green-50 rounded-lg p-4 text-lg font-semibold text-green-900">
+                <div className={`rounded-lg p-4 text-lg font-semibold border ${
+                  selectedField.fieldValue 
+                    ? 'bg-green-50 text-green-900 border-green-200'
+                    : 'bg-slate-50 text-slate-500 border-slate-200 italic'
+                }`}>
                   {selectedField.fieldValue || 'N/A'}
                 </div>
               </div>
 
-              {selectedField.documentChunk && (
+              {/* Only show document excerpt if we actually have a value (not N/A) */}
+              {selectedField.fieldValue && selectedField.documentChunk && (
                 <div>
                   <h3 className="text-sm font-semibold text-slate-700 mb-2">Document Excerpt</h3>
-                  <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                  <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 overflow-x-auto">
                     {selectedField.highlightedText ? (
                       <div
-                        className="text-sm text-slate-900 whitespace-pre-wrap font-mono"
+                        className="text-sm text-slate-900 whitespace-pre-wrap font-mono leading-relaxed break-words"
+                        style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
                         dangerouslySetInnerHTML={{ __html: selectedField.highlightedText }}
                       />
                     ) : (
-                      <div className="text-sm text-slate-900 whitespace-pre-wrap font-mono">
+                      <div 
+                        className="text-sm text-slate-900 whitespace-pre-wrap font-mono leading-relaxed break-words"
+                        style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
+                      >
                         {selectedField.documentChunk}
                       </div>
                     )}
@@ -322,8 +373,11 @@ export default function SubmissionReviewerPage() {
                     mark {
                       background-color: #fef08a;
                       padding: 2px 4px;
-                      border-radius: 2px;
+                      border-radius: 3px;
                       font-weight: 600;
+                      color: #92400e;
+                      word-break: break-word;
+                      overflow-wrap: break-word;
                     }
                   `}</style>
                 </div>
@@ -347,3 +401,17 @@ export default function SubmissionReviewerPage() {
   );
 }
 
+export default function SubmissionReviewerPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-slate-200 border-t-slate-900 mb-4"></div>
+          <p className="text-slate-600 font-medium">Loading...</p>
+        </div>
+      </div>
+    }>
+      <SubmissionReviewerContent />
+    </Suspense>
+  );
+}

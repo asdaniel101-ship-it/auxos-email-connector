@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
 import "./globals.css";
-import AuxoLogo from "@/components/AuxoLogo";
+import ConditionalHeader from "@/components/ConditionalHeader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,46 +28,18 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50 text-slate-900`}>
         <div className="min-h-screen flex flex-col">
-          <header className="bg-white border-b border-slate-200">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <Link href="/" className="flex items-center gap-3">
-                {/* Logo */}
-                <AuxoLogo />
-                <div>
-                  <span className="block text-sm text-slate-500">
-                    Insurance & funding made easy for restaurants.
-                  </span>
-                </div>
-              </Link>
-              <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
-                <Link href="/dashboard" className="hover:text-slate-900 transition-colors">
-                  Dashboard
-                </Link>
-                <Link href="/debug-emails" className="hover:text-slate-900 transition-colors">
-                  Debug Emails
-                </Link>
-                <Link href="/partners/dashboard" className="hover:text-slate-900 transition-colors">
-                  Partner Portal
-                </Link>
-                <Link href="/upload-eml" className="hover:text-slate-900 transition-colors">
-                  Upload .eml
-                </Link>
-              </nav>
-              <div className="md:hidden flex flex-col gap-3 text-sm text-slate-600">
-                <div className="flex gap-4 justify-center">
-                  <Link href="/dashboard" className="hover:text-slate-900 transition-colors">
-                    Dashboard
-                  </Link>
-                  <Link href="/partners/dashboard" className="hover:text-slate-900 transition-colors">
-                    Partner Portal
-                  </Link>
-                  <Link href="/upload-eml" className="hover:text-slate-900 transition-colors">
-                    Upload .eml
-                  </Link>
+          <Suspense fallback={
+            <header className="bg-white border-b border-slate-200">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-slate-200 rounded animate-pulse"></div>
+                  <div className="h-4 w-48 bg-slate-200 rounded animate-pulse"></div>
                 </div>
               </div>
-            </div>
-          </header>
+            </header>
+          }>
+            <ConditionalHeader />
+          </Suspense>
           <main className="flex-1">{children}</main>
         </div>
       </body>

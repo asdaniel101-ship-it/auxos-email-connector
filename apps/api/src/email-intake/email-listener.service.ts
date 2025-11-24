@@ -750,7 +750,7 @@ export class EmailListenerService {
    * Send reply email via SMTP
    * Replies to all original recipients (To and CC)
    */
-  async sendReply(emailData: any, packagedResponse: any) {
+  async sendReply(emailData: any, packagedResponse: any, fieldExtractions: any[] = []) {
     this.logger.log(`Sending reply for email: ${emailData.gmailMessageId}`);
 
     if (!this.transporter) {
@@ -929,7 +929,7 @@ export class EmailListenerService {
         to: filteredRecipients, // Send to all recipients (Reply-All behavior)
         subject,
         text: this.buildReplyText(packagedResponse),
-        html: this.buildReplyHtml(packagedResponse),
+        html: this.buildReplyHtml(packagedResponse, emailData.id, fieldExtractions),
         attachments: [
           {
             filename: `Submission_${emailData.id}.json`,
@@ -995,10 +995,13 @@ The Auxo processor
   /**
    * Build HTML reply with modern, scannable design
    */
-  private buildReplyHtml(packagedResponse: any): string {
+  private buildReplyHtml(packagedResponse: any, emailMessageId: string, fieldExtractions: any[] = []): string {
+    // Get frontend URL from config or use default
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    
     // Use JSON data if available for better structure, otherwise parse the text table
     const htmlTable = packagedResponse.json 
-      ? this.convertJsonToHtml(packagedResponse.json)
+      ? this.convertJsonToHtml(packagedResponse.json, emailMessageId, fieldExtractions, frontendUrl)
       : this.convertTableToHtml(packagedResponse.table);
     
     return `
@@ -1228,7 +1231,7 @@ The Auxo processor
   /**
    * Convert JSON data directly to formatted HTML (preferred method)
    */
-  private convertJsonToHtml(data: any): string {
+  private convertJsonToHtml(data: any, emailMessageId: string, fieldExtractions: any[] = [], frontendUrl: string = 'http://localhost:3000'): string {
     if (!data) return '';
     
     let html = '';
@@ -1238,12 +1241,12 @@ The Auxo processor
       html += '<div class="section">';
       html += '<div class="section-header">Submission Information</div>';
       html += '<table class="details-table">';
-      html += this.renderKeyValue('Named Insured', data.submission.namedInsured);
-      html += this.renderKeyValue('Carrier', data.submission.carrierName);
-      html += this.renderKeyValue('Broker', data.submission.brokerName);
-      html += this.renderKeyValue('Effective Date', data.submission.effectiveDate);
-      html += this.renderKeyValue('Expiration Date', data.submission.expirationDate);
-      html += this.renderKeyValue('Submission Type', data.submission.submissionType);
+      html += this.renderKeyValue('Named Insured', data.submission.namedInsured, false, 'submission.namedInsured', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('Carrier', data.submission.carrierName, false, 'submission.carrierName', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('Broker', data.submission.brokerName, false, 'submission.brokerName', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('Effective Date', data.submission.effectiveDate, false, 'submission.effectiveDate', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('Expiration Date', data.submission.expirationDate, false, 'submission.expirationDate', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('Submission Type', data.submission.submissionType, false, 'submission.submissionType', emailMessageId, fieldExtractions, frontendUrl);
       html += '</table></div>';
     }
     
@@ -1252,25 +1255,25 @@ The Auxo processor
       html += '<div class="section">';
       html += '<div class="section-header">Locations & Buildings</div>';
       
-      for (const location of data.locations) {
+      data.locations.forEach((location: any, locationIndex: number) => {
         html += '<div class="location-group">';
         html += `<div class="location-title">Location ${location.locationNumber || 'N/A'}</div>`;
         
         if (location.buildings && Array.isArray(location.buildings)) {
-          for (const building of location.buildings) {
+          location.buildings.forEach((building: any, buildingIndex: number) => {
             html += '<div class="building-group">';
             html += `<div class="building-title">Building ${building.buildingNumber || 'N/A'}</div>`;
-            html += this.renderKeyValue('Address', building.riskAddress, true);
-            html += this.renderKeyValue('Square Feet', building.buildingSqFt?.toLocaleString(), true);
-            html += this.renderKeyValue('Building Limit', building.buildingLimit ? `$${building.buildingLimit.toLocaleString()}` : null, true);
-            html += this.renderKeyValue('Construction', building.constructionType, true);
-            html += this.renderKeyValue('Year Built', building.yearBuilt, true);
-            html += this.renderKeyValue('Sprinklered', building.sprinklered ? 'Yes' : 'No', true);
+            html += this.renderKeyValue('Address', building.riskAddress, true, `locations[${locationIndex}].buildings[${buildingIndex}].riskAddress`, emailMessageId, fieldExtractions, frontendUrl);
+            html += this.renderKeyValue('Square Feet', building.buildingSqFt?.toLocaleString(), true, `locations[${locationIndex}].buildings[${buildingIndex}].buildingSqFt`, emailMessageId, fieldExtractions, frontendUrl);
+            html += this.renderKeyValue('Building Limit', building.buildingLimit ? `$${building.buildingLimit.toLocaleString()}` : null, true, `locations[${locationIndex}].buildings[${buildingIndex}].buildingLimit`, emailMessageId, fieldExtractions, frontendUrl);
+            html += this.renderKeyValue('Construction', building.constructionType, true, `locations[${locationIndex}].buildings[${buildingIndex}].constructionType`, emailMessageId, fieldExtractions, frontendUrl);
+            html += this.renderKeyValue('Year Built', building.yearBuilt, true, `locations[${locationIndex}].buildings[${buildingIndex}].yearBuilt`, emailMessageId, fieldExtractions, frontendUrl);
+            html += this.renderKeyValue('Sprinklered', building.sprinklered ? 'Yes' : 'No', true, `locations[${locationIndex}].buildings[${buildingIndex}].sprinklered`, emailMessageId, fieldExtractions, frontendUrl);
             html += '</div>';
-          }
+          });
         }
         html += '</div>';
-      }
+      });
       html += '</div>';
     }
     
@@ -1279,13 +1282,13 @@ The Auxo processor
       html += '<div class="section">';
       html += '<div class="section-header">Coverage & Limits</div>';
       html += '<table class="details-table">';
-      html += this.renderKeyValue('Policy Type', data.coverage.policyType);
-      html += this.renderKeyValue('Cause of Loss', data.coverage.causeOfLossForm);
-      html += this.renderKeyValue('Building Limit', data.coverage.buildingLimit ? `$${data.coverage.buildingLimit.toLocaleString()}` : null);
-      html += this.renderKeyValue('BPP Limit', data.coverage.businessPersonalPropertyLimit ? `$${data.coverage.businessPersonalPropertyLimit.toLocaleString()}` : null);
-      html += this.renderKeyValue('Business Income Limit', data.coverage.businessIncomeLimit ? `$${data.coverage.businessIncomeLimit.toLocaleString()}` : null);
-      html += this.renderKeyValue('Deductible', data.coverage.deductibleAllPeril ? `$${data.coverage.deductibleAllPeril.toLocaleString()}` : null);
-      html += this.renderKeyValue('Coinsurance', data.coverage.coinsurancePercent ? `${data.coverage.coinsurancePercent}%` : null);
+      html += this.renderKeyValue('Policy Type', data.coverage.policyType, false, 'coverage.policyType', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('Cause of Loss', data.coverage.causeOfLossForm, false, 'coverage.causeOfLossForm', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('Building Limit', data.coverage.buildingLimit ? `$${data.coverage.buildingLimit.toLocaleString()}` : null, false, 'coverage.buildingLimit', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('BPP Limit', data.coverage.businessPersonalPropertyLimit ? `$${data.coverage.businessPersonalPropertyLimit.toLocaleString()}` : null, false, 'coverage.businessPersonalPropertyLimit', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('Business Income Limit', data.coverage.businessIncomeLimit ? `$${data.coverage.businessIncomeLimit.toLocaleString()}` : null, false, 'coverage.businessIncomeLimit', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('Deductible', data.coverage.deductibleAllPeril ? `$${data.coverage.deductibleAllPeril.toLocaleString()}` : null, false, 'coverage.deductibleAllPeril', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('Coinsurance', data.coverage.coinsurancePercent ? `${data.coverage.coinsurancePercent}%` : null, false, 'coverage.coinsurancePercent', emailMessageId, fieldExtractions, frontendUrl);
       html += '</table></div>';
     }
     
@@ -1294,12 +1297,12 @@ The Auxo processor
       html += '<div class="section">';
       html += '<div class="section-header">Loss History</div>';
       html += '<table class="details-table">';
-      html += this.renderKeyValue('Period', data.lossHistory.lossHistoryPeriodYears ? `${data.lossHistory.lossHistoryPeriodYears} years` : null);
-      html += this.renderKeyValue('Number of Claims', data.lossHistory.numberOfClaims);
-      html += this.renderKeyValue('Total Incurred', data.lossHistory.totalIncurredLoss ? `$${data.lossHistory.totalIncurredLoss.toLocaleString()}` : null);
-      html += this.renderKeyValue('Largest Single Loss', data.lossHistory.largestSingleLoss ? `$${data.lossHistory.largestSingleLoss.toLocaleString()}` : null);
-      html += this.renderKeyValue('Open Claims', data.lossHistory.anyOpenClaims ? 'Yes' : 'No');
-      html += this.renderKeyValue('CAT Losses', data.lossHistory.anyCatLosses ? 'Yes' : 'No');
+      html += this.renderKeyValue('Period', data.lossHistory.lossHistoryPeriodYears ? `${data.lossHistory.lossHistoryPeriodYears} years` : null, false, 'lossHistory.lossHistoryPeriodYears', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('Number of Claims', data.lossHistory.numberOfClaims, false, 'lossHistory.numberOfClaims', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('Total Incurred', data.lossHistory.totalIncurredLoss ? `$${data.lossHistory.totalIncurredLoss.toLocaleString()}` : null, false, 'lossHistory.totalIncurredLoss', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('Largest Single Loss', data.lossHistory.largestSingleLoss ? `$${data.lossHistory.largestSingleLoss.toLocaleString()}` : null, false, 'lossHistory.largestSingleLoss', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('Open Claims', data.lossHistory.anyOpenClaims ? 'Yes' : 'No', false, 'lossHistory.anyOpenClaims', emailMessageId, fieldExtractions, frontendUrl);
+      html += this.renderKeyValue('CAT Losses', data.lossHistory.anyCatLosses ? 'Yes' : 'No', false, 'lossHistory.anyCatLosses', emailMessageId, fieldExtractions, frontendUrl);
       html += '</table></div>';
     }
     
@@ -1309,14 +1312,38 @@ The Auxo processor
   /**
    * Render a key-value pair as a table row or div
    */
-  private renderKeyValue(key: string, value: any, asDiv: boolean = false): string {
+  private renderKeyValue(
+    key: string, 
+    value: any, 
+    asDiv: boolean = false,
+    fieldPath?: string,
+    emailMessageId?: string,
+    fieldExtractions: any[] = [],
+    frontendUrl: string = 'http://localhost:3000'
+  ): string {
     const displayValue = value !== null && value !== undefined ? String(value) : 'N/A';
     const formattedValue = this.formatValue(displayValue);
     
+    // Check if this field was extracted (has a value and extraction record)
+    let isExtracted = false;
+    let hasValue = value !== null && value !== undefined && value !== '';
+    
+    if (fieldPath && hasValue) {
+      const extraction = fieldExtractions.find(fe => fe.fieldPath === fieldPath);
+      isExtracted = extraction && extraction.fieldValue !== null && extraction.fieldValue !== undefined && extraction.fieldValue !== '';
+    }
+    
+    // Create hyperlink if field was extracted
+    let valueHtml = formattedValue;
+    if (isExtracted && fieldPath && emailMessageId) {
+      const url = `${frontendUrl}/submission/${emailMessageId}?field=${encodeURIComponent(fieldPath)}&fromEmail=true`;
+      valueHtml = `<a href="${url}" style="color: #3b82f6; text-decoration: underline; font-weight: 600;">${formattedValue}</a>`;
+    }
+    
     if (asDiv) {
-      return `<div style="padding: 4px 0; font-size: 13px;"><strong style="color: #374151;">${this.escapeHtml(key)}:</strong> <span>${formattedValue}</span></div>`;
+      return `<div style="padding: 4px 0; font-size: 13px;"><strong style="color: #374151;">${this.escapeHtml(key)}:</strong> <span>${valueHtml}</span></div>`;
     } else {
-      return `<tr><td>${this.escapeHtml(key)}</td><td>${formattedValue}</td></tr>`;
+      return `<tr><td>${this.escapeHtml(key)}</td><td>${valueHtml}</td></tr>`;
     }
   }
 

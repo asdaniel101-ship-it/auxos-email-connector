@@ -150,6 +150,57 @@ export class EmailIntakeController {
     return this.emailListener.checkImapConnection();
   }
 
+  @Get('submissions/:id/email-body')
+  @ApiOperation({ summary: 'Get the email body for a submission' })
+  @ApiResponse({ status: 200, description: 'Email body text' })
+  async getEmailBody(@Param('id') id: string) {
+    try {
+      const emailData = await this.prisma.emailMessage.findUnique({
+        where: { id },
+      });
+      
+      if (!emailData) {
+        throw new HttpException(`Email with ID ${id} not found`, HttpStatus.NOT_FOUND);
+      }
+
+      let emailBody = '';
+
+      // Try to get the body from the stored raw MIME file in MinIO
+      if (emailData.rawMimeStorageKey) {
+        try {
+          const minioClient = this.minioService.getClient();
+          const dataStream = await minioClient.getObject('documents', emailData.rawMimeStorageKey);
+          
+          // Read the raw MIME file
+          const chunks: Buffer[] = [];
+          for await (const chunk of dataStream) {
+            chunks.push(chunk);
+          }
+          const rawMime = Buffer.concat(chunks);
+          
+          // Parse it to get the body
+          const { simpleParser } = await import('mailparser');
+          const parsed = await simpleParser(rawMime);
+          emailBody = parsed.text || parsed.html || '';
+        } catch (mimeError) {
+          console.warn(`Could not read raw MIME file for email body: ${mimeError}`);
+        }
+      }
+
+      return { emailBody };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      
+      console.error('Error getting email body:', error);
+      throw new HttpException(
+        error instanceof Error ? error.message : 'Failed to get email body',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Post('reprocess/:emailMessageId')
   @ApiOperation({ summary: 'Reprocess an existing email by its database ID (useful for fixing failed emails)' })
   @ApiResponse({ status: 200, description: 'Email reprocessed' })

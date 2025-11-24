@@ -162,8 +162,12 @@ export class EmailIntakeService {
         });
       }
 
-      // 8. Send reply email
-      await this.emailListener.sendReply(emailData, packagedResponse);
+      // 8. Send reply email (pass email message ID and field extractions for hyperlinks)
+      await this.emailListener.sendReply(
+        emailData, 
+        packagedResponse,
+        extractionResult?.fieldExtractions || []
+      );
 
       // 9. Mark as done
       await this.prisma.emailMessage.update({

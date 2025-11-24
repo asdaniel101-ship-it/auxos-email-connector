@@ -122,10 +122,68 @@ export class FieldExtractionService {
       const responseData = JSON.parse(response.choices[0].message.content || '{}');
       const extractedData = responseData.data || responseData;
       
-      // Extract field extractions from response (if provided) or generate them
-      const fieldExtractions = responseData.fieldExtractions || 
-        await this.generateFieldExtractions(extractedData, emailData, attachmentTextMap, documentClassifications);
+      // Always generate field extractions for ALL fields to ensure every field has a source
+      // The LLM might only provide extractions for fields with values, but we want ALL fields
+      const llmFieldExtractions = responseData.fieldExtractions || [];
+      const allFieldExtractions = await this.generateFieldExtractions(
+        extractedData, 
+        emailData, 
+        attachmentTextMap, 
+        documentClassifications
+      );
       
+      // Merge LLM extractions with generated ones, preferring LLM chunks if available
+      const mergedExtractions = new Map<string, typeof allFieldExtractions[0]>();
+      
+      // First, add all generated extractions (covers ALL fields)
+      for (const fe of allFieldExtractions) {
+        mergedExtractions.set(fe.fieldPath, fe);
+      }
+      
+      // Then, override with LLM extractions if they have better chunks
+      for (const llmFe of llmFieldExtractions) {
+        const existing = mergedExtractions.get(llmFe.fieldPath);
+        if (existing) {
+          // Prefer LLM extraction if it has a chunk and existing doesn't
+          if (llmFe.documentChunk && !existing.documentChunk) {
+            mergedExtractions.set(llmFe.fieldPath, llmFe);
+          } else if (llmFe.documentChunk && existing.documentChunk) {
+            // Both have chunks, prefer LLM one
+            mergedExtractions.set(llmFe.fieldPath, llmFe);
+          }
+          // If LLM doesn't have chunk but existing does, keep existing (don't override)
+        } else {
+          // LLM provided an extraction we don't have
+          // If it doesn't have a chunk and source is email_body, try to create one
+          if (!llmFe.documentChunk && llmFe.source === 'email_body' && emailData.body) {
+            const valueStr = String(llmFe.fieldValue || '');
+            const bodyLower = emailData.body.toLowerCase();
+            let valueIndex = valueStr ? bodyLower.indexOf(valueStr.toLowerCase()) : -1;
+            
+            if (valueIndex === -1) {
+              // Try to find field name
+              const fieldNamePattern = new RegExp(
+                this.escapeRegex(llmFe.fieldName.replace(/([A-Z])/g, ' $1').toLowerCase()),
+                'i'
+              );
+              const fieldNameMatch = emailData.body.match(fieldNamePattern);
+              if (fieldNameMatch && fieldNameMatch.index !== undefined) {
+                valueIndex = fieldNameMatch.index;
+              }
+            }
+            
+            const chunkIndex = valueIndex !== -1 ? valueIndex : 0;
+            const chunk = this.extractChunk(emailData.body, chunkIndex, valueStr.length || 200);
+            llmFe.documentChunk = chunk.text;
+            llmFe.highlightedText = chunk.highlighted;
+            llmFe.chunkStartIndex = chunk.startIndex;
+            llmFe.chunkEndIndex = chunk.endIndex;
+          }
+          mergedExtractions.set(llmFe.fieldPath, llmFe);
+        }
+      }
+      
+      const fieldExtractions = Array.from(mergedExtractions.values());
       this.logger.log(`Field extraction completed: ${fieldExtractions.length} fields with sources`);
 
       return { data: extractedData, fieldExtractions };
@@ -211,7 +269,7 @@ For each extracted field:
 - chunkStartIndex: Character position where chunk starts in original document (approximate)
 - chunkEndIndex: Character position where chunk ends in original document (approximate)
 
-Only include fieldExtractions for fields that have a value (not null).`;
+Include fieldExtractions for ALL fields in the data structure, even if the value is null. This ensures every field has a source attribution.`;
   }
 
   /**
@@ -312,35 +370,53 @@ Only include fieldExtractions for fields that have a value (not null).`;
     // For each field with a value, try to find it in the source documents
     for (const field of allFields) {
       if (field.value === null || field.value === undefined || field.value === '') {
-        // Still create an extraction record for null values
+        // Create extraction record for null values WITHOUT chunks (no value found, nothing to show)
         fieldExtractions.push({
           fieldPath: field.path,
           fieldName: field.name,
           fieldValue: null,
-          source: 'email_body', // Default source
+          source: 'email_body', // Default source for attribution, but no chunk since no value was found
         });
         continue;
       }
 
       const searchValue = String(field.value).toLowerCase();
+      // Also try normalized versions (remove commas, dollar signs, etc.)
+      const normalizedValue = searchValue.replace(/[,$%]/g, '').trim();
       let found = false;
+      let bestMatch: { source: string; chunk: ReturnType<typeof this.extractChunk>; documentId?: string } | null = null;
 
       // Search in email body first
       if (emailData.body) {
         const bodyLower = emailData.body.toLowerCase();
-        const index = bodyLower.indexOf(searchValue);
+        let index = bodyLower.indexOf(searchValue);
+        
+        // If exact match not found, try normalized search
+        if (index === -1 && normalizedValue) {
+          const bodyNormalized = bodyLower.replace(/[,$%]/g, '');
+          const normalizedIndex = bodyNormalized.indexOf(normalizedValue);
+          if (normalizedIndex !== -1) {
+            // Map back to original text position (approximate)
+            index = this.findApproximatePosition(emailData.body, normalizedIndex, normalizedValue.length);
+          }
+        }
+        
+        // If still not found, try searching for field name near the value
+        if (index === -1) {
+          const fieldNamePattern = new RegExp(
+            this.escapeRegex(field.name.replace(/([A-Z])/g, ' $1').toLowerCase()),
+            'i'
+          );
+          const fieldNameMatch = emailData.body.match(fieldNamePattern);
+          if (fieldNameMatch && fieldNameMatch.index !== undefined) {
+            // Extract chunk around field name
+            index = fieldNameMatch.index;
+          }
+        }
+        
         if (index !== -1) {
-          const chunk = this.extractChunk(emailData.body, index, searchValue.length);
-          fieldExtractions.push({
-            fieldPath: field.path,
-            fieldName: field.name,
-            fieldValue: field.value,
-            source: 'email_body',
-            documentChunk: chunk.text,
-            highlightedText: chunk.highlighted,
-            chunkStartIndex: chunk.startIndex,
-            chunkEndIndex: chunk.endIndex,
-          });
+          const chunk = this.extractChunk(emailData.body, index, searchValue.length || 50);
+          bestMatch = { source: 'email_body', chunk };
           found = true;
         }
       }
@@ -349,34 +425,135 @@ Only include fieldExtractions for fields that have a value (not null).`;
       if (!found) {
         for (const [attachmentId, { text, docType }] of attachmentTextMap.entries()) {
           const textLower = text.toLowerCase();
-          const index = textLower.indexOf(searchValue);
+          let index = textLower.indexOf(searchValue);
+          
+          // If exact match not found, try normalized search
+          if (index === -1 && normalizedValue) {
+            const textNormalized = textLower.replace(/[,$%]/g, '');
+            const normalizedIndex = textNormalized.indexOf(normalizedValue);
+            if (normalizedIndex !== -1) {
+              index = this.findApproximatePosition(text, normalizedIndex, normalizedValue.length);
+            }
+          }
+          
+          // If still not found, try searching for field name
+          if (index === -1) {
+            const fieldNamePattern = new RegExp(
+              this.escapeRegex(field.name.replace(/([A-Z])/g, ' $1').toLowerCase()),
+              'i'
+            );
+            const fieldNameMatch = text.match(fieldNamePattern);
+            if (fieldNameMatch && fieldNameMatch.index !== undefined) {
+              index = fieldNameMatch.index;
+            }
+          }
+          
           if (index !== -1) {
-            const chunk = this.extractChunk(text, index, searchValue.length);
-            fieldExtractions.push({
-              fieldPath: field.path,
-              fieldName: field.name,
-              fieldValue: field.value,
-              source: docType,
-              documentId: attachmentId,
-              documentChunk: chunk.text,
-              highlightedText: chunk.highlighted,
-              chunkStartIndex: chunk.startIndex,
-              chunkEndIndex: chunk.endIndex,
-            });
+            const chunk = this.extractChunk(text, index, searchValue.length || 50);
+            bestMatch = { source: docType, chunk, documentId: attachmentId };
             found = true;
             break;
           }
         }
       }
 
-      // If still not found, create record without chunk
-      if (!found) {
+      // Create extraction record - always include a chunk if we found something
+      if (bestMatch) {
         fieldExtractions.push({
           fieldPath: field.path,
           fieldName: field.name,
           fieldValue: field.value,
-          source: 'email_body', // Default
+          source: bestMatch.source,
+          documentId: bestMatch.documentId,
+          documentChunk: bestMatch.chunk.text,
+          highlightedText: bestMatch.chunk.highlighted,
+          chunkStartIndex: bestMatch.chunk.startIndex,
+          chunkEndIndex: bestMatch.chunk.endIndex,
         });
+      } else {
+        // If not found anywhere, still create record with email_body as default source
+        // ALWAYS try to extract a chunk from email body so fields are clickable
+        let defaultChunk: ReturnType<typeof this.extractChunk> | null = null;
+        if (emailData.body) {
+          // First, try to find the field value in email body (case-insensitive, normalized)
+          const valueStr = String(field.value);
+          const bodyLower = emailData.body.toLowerCase();
+          const valueLower = valueStr.toLowerCase();
+          let valueIndex = bodyLower.indexOf(valueLower);
+          
+          // If value not found, try normalized search
+          if (valueIndex === -1 && valueStr) {
+            const normalizedValue = valueLower.replace(/[,$%]/g, '').trim();
+            if (normalizedValue) {
+              const bodyNormalized = bodyLower.replace(/[,$%]/g, '');
+              const normalizedIndex = bodyNormalized.indexOf(normalizedValue);
+              if (normalizedIndex !== -1) {
+                valueIndex = this.findApproximatePosition(emailData.body, normalizedIndex, normalizedValue.length);
+              }
+            }
+          }
+          
+          // If value found, extract chunk around it
+          if (valueIndex !== -1) {
+            defaultChunk = this.extractChunk(emailData.body, valueIndex, valueStr.length);
+          } else {
+            // Try to find field name in email body
+            const fieldNamePattern = new RegExp(
+              this.escapeRegex(field.name.replace(/([A-Z])/g, ' $1').toLowerCase()),
+              'i'
+            );
+            const fieldNameMatch = emailData.body.match(fieldNamePattern);
+            if (fieldNameMatch && fieldNameMatch.index !== undefined) {
+              defaultChunk = this.extractChunk(emailData.body, fieldNameMatch.index, 50);
+            } else {
+              // Extract a general chunk from the beginning of email body
+              defaultChunk = this.extractChunk(emailData.body, 0, 200);
+            }
+          }
+        }
+        
+        const extractionRecord: {
+          fieldPath: string;
+          fieldName: string;
+          fieldValue: any;
+          source: string;
+          documentChunk?: string;
+          highlightedText?: string;
+          chunkStartIndex?: number;
+          chunkEndIndex?: number;
+        } = {
+          fieldPath: field.path,
+          fieldName: field.name,
+          fieldValue: field.value,
+          source: 'email_body', // Default
+        };
+        
+        // Always include chunk if email body exists
+        if (defaultChunk) {
+          extractionRecord.documentChunk = defaultChunk.text;
+          // Try to highlight the value in the chunk
+          const valueStr = String(field.value);
+          if (valueStr && defaultChunk.text.toLowerCase().includes(valueStr.toLowerCase())) {
+            extractionRecord.highlightedText = defaultChunk.text.replace(
+              new RegExp(this.escapeRegex(valueStr), 'gi'),
+              (match) => `<mark>${match}</mark>`
+            );
+          } else {
+            // If value not in chunk, just use the chunk as-is
+            extractionRecord.highlightedText = defaultChunk.highlighted;
+          }
+          extractionRecord.chunkStartIndex = defaultChunk.startIndex;
+          extractionRecord.chunkEndIndex = defaultChunk.endIndex;
+        } else if (emailData.body) {
+          // Fallback: if we somehow don't have a chunk but have email body, create a minimal one
+          const minimalChunk = this.extractChunk(emailData.body, 0, 200);
+          extractionRecord.documentChunk = minimalChunk.text;
+          extractionRecord.highlightedText = minimalChunk.highlighted;
+          extractionRecord.chunkStartIndex = minimalChunk.startIndex;
+          extractionRecord.chunkEndIndex = minimalChunk.endIndex;
+        }
+        
+        fieldExtractions.push(extractionRecord);
       }
     }
 
@@ -415,6 +592,26 @@ Only include fieldExtractions for fields that have a value (not null).`;
    */
   private escapeRegex(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /**
+   * Find approximate position in original text after normalization
+   * This is a helper to map normalized positions back to original text
+   */
+  private findApproximatePosition(originalText: string, normalizedIndex: number, length: number): number {
+    // Simple approach: count characters in original text, skipping special chars
+    let normalizedCount = 0;
+    for (let i = 0; i < originalText.length; i++) {
+      const char = originalText[i];
+      if (!/[,$%]/.test(char)) {
+        if (normalizedCount === normalizedIndex) {
+          return i;
+        }
+        normalizedCount++;
+      }
+    }
+    // Fallback: return normalized index if mapping fails
+    return Math.min(normalizedIndex, originalText.length - 1);
   }
 
   /**
