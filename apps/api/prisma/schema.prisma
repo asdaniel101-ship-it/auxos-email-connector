@@ -258,3 +258,111 @@ model FieldDefinition {
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 }
+
+// ===== EMAIL INTAKE MVP MODELS =====
+
+enum EmailProcessingStatus {
+  pending
+  processing
+  done
+  error
+}
+
+enum SubmissionType {
+  new_business
+  renewal
+  endorsement
+  other
+}
+
+enum DocumentType {
+  email_body
+  acord
+  sov
+  loss_run
+  schedule
+  supplemental
+  other
+}
+
+model EmailMessage {
+  id                String                @id @default(cuid())
+  gmailMessageId    String                @unique
+  threadId          String
+  from              String
+  to                String[]
+  cc                String[]              @default([])
+  subject           String
+  receivedAt        DateTime
+  rawMimeStorageKey String? // Points to blob store (S3/GCS)
+  isSubmission      Boolean               @default(false)
+  submissionType    SubmissionType?
+  processingStatus  EmailProcessingStatus @default(pending)
+  errorMessage      String?               @db.Text
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  attachments      EmailAttachment[]
+  extractionResult ExtractionResult?
+
+  @@index([gmailMessageId])
+  @@index([threadId])
+  @@index([processingStatus])
+  @@index([isSubmission])
+  @@index([receivedAt])
+}
+
+model EmailAttachment {
+  id                   String       @id @default(cuid())
+  emailMessageId       String
+  emailMessage         EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+  filename             String
+  contentType          String
+  sizeBytes            Int
+  storageKey           String // Blob location (S3/GCS)
+  documentType         DocumentType @default(other)
+  parsedTextStorageKey String? // Full text extraction storage key
+  createdAt            DateTime     @default(now())
+
+  @@index([emailMessageId])
+  @@index([documentType])
+}
+
+model ExtractionResult {
+  id             String       @id @default(cuid())
+  emailMessageId String       @unique
+  emailMessage   EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+  data           Json // Full structured fields (submission metadata, locations, coverage, loss history)
+  qaFlags        Json? // Flags from orchestrator (warnings, confidence issues)
+  summaryText    String?      @db.Text // LLM-generated summary paragraph
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  fieldExtractions FieldExtraction[]
+
+  @@index([emailMessageId])
+}
+
+// Store individual field extractions with document chunks and highlights
+model FieldExtraction {
+  id                String            @id @default(cuid())
+  extractionResultId String
+  extractionResult  ExtractionResult  @relation(fields: [extractionResultId], references: [id], onDelete: Cascade)
+  fieldPath         String            // e.g., "submission.namedInsured", "locations[0].buildings[0].riskAddress"
+  fieldName         String            // e.g., "namedInsured", "riskAddress"
+  fieldValue        String?           @db.Text // Extracted value (null if not found)
+  source            String            // "email_body" | "acord" | "sov" | "loss_run" | "schedule" | "supplemental" | "other"
+  documentId        String?           // ID of the document this came from (if from attachment)
+  documentChunk     String?           @db.Text // The actual text chunk from the document
+  highlightedText   String?           @db.Text // The chunk with the extracted value highlighted (e.g., with <mark> tags)
+  chunkStartIndex   Int?              // Character index where chunk starts in original document
+  chunkEndIndex      Int?              // Character index where chunk ends in original document
+  confidence        Float?             // Confidence score (0-1) if available
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([extractionResultId])
+  @@index([fieldPath])
+  @@index([fieldName])
+  @@index([source])
+}

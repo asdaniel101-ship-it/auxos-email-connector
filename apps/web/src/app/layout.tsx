@@ -40,14 +40,29 @@ export default function RootLayout({
                 </div>
               </Link>
               <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
+                <Link href="/dashboard" className="hover:text-slate-900 transition-colors">
+                  Dashboard
+                </Link>
+                <Link href="/debug-emails" className="hover:text-slate-900 transition-colors">
+                  Debug Emails
+                </Link>
                 <Link href="/partners/dashboard" className="hover:text-slate-900 transition-colors">
                   Partner Portal
+                </Link>
+                <Link href="/upload-eml" className="hover:text-slate-900 transition-colors">
+                  Upload .eml
                 </Link>
               </nav>
               <div className="md:hidden flex flex-col gap-3 text-sm text-slate-600">
                 <div className="flex gap-4 justify-center">
+                  <Link href="/dashboard" className="hover:text-slate-900 transition-colors">
+                    Dashboard
+                  </Link>
                   <Link href="/partners/dashboard" className="hover:text-slate-900 transition-colors">
                     Partner Portal
+                  </Link>
+                  <Link href="/upload-eml" className="hover:text-slate-900 transition-colors">
+                    Upload .eml
                   </Link>
                 </div>
               </div>

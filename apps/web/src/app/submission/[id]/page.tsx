@@ -1,0 +1,349 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
+interface FieldExtraction {
+  id: string;
+  fieldPath: string;
+  fieldName: string;
+  fieldValue: string | null;
+  source: string;
+  documentId: string | null;
+  documentChunk: string | null;
+  highlightedText: string | null;
+  chunkStartIndex: number | null;
+  chunkEndIndex: number | null;
+  confidence: number | null;
+}
+
+interface Submission {
+  id: string;
+  gmailMessageId: string;
+  subject: string;
+  from: string;
+  receivedAt: string;
+  extractionResult: {
+    id: string;
+    data: any;
+    fieldExtractions: FieldExtraction[];
+  } | null;
+  attachments: Array<{
+    id: string;
+    filename: string;
+    documentType: string;
+  }>;
+}
+
+export default function SubmissionReviewerPage() {
+  const params = useParams();
+  const router = useRouter();
+  const [submission, setSubmission] = useState<Submission | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedField, setSelectedField] = useState<FieldExtraction | null>(null);
+
+  useEffect(() => {
+    if (params.id) {
+      loadSubmission(params.id as string);
+    }
+  }, [params.id]);
+
+  const loadSubmission = async (id: string) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_URL}/email-intake/submissions/${id}`);
+      if (!response.ok) {
+        throw new Error('Failed to load submission');
+      }
+      const data = await response.json();
+      setSubmission(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load submission');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Flatten the data structure to show all fields
+  const flattenData = (obj: any, prefix = '', path = ''): Array<{ path: string; name: string; value: any; displayName: string }> => {
+    const fields: Array<{ path: string; name: string; value: any; displayName: string }> = [];
+    
+    const formatFieldName = (name: string) => {
+      return name
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (str) => str.toUpperCase())
+        .trim();
+    };
+    
+    for (const key in obj) {
+      const currentPath = path ? `${path}.${key}` : key;
+      const value = obj[key];
+      
+      if (value === null || value === undefined) {
+        fields.push({ 
+          path: currentPath, 
+          name: key, 
+          value: null,
+          displayName: formatFieldName(key),
+        });
+      } else if (Array.isArray(value)) {
+        value.forEach((item, index) => {
+          if (typeof item === 'object' && item !== null) {
+            fields.push(...flattenData(item, `${currentPath}[${index}]`, `${currentPath}[${index}]`));
+          } else {
+            fields.push({ 
+              path: `${currentPath}[${index}]`, 
+              name: key, 
+              value: item,
+              displayName: `${formatFieldName(key)} [${index}]`,
+            });
+          }
+        });
+      } else if (typeof value === 'object') {
+        fields.push(...flattenData(value, currentPath, currentPath));
+      } else {
+        fields.push({ 
+          path: currentPath, 
+          name: key, 
+          value,
+          displayName: formatFieldName(key),
+        });
+      }
+    }
+    
+    return fields;
+  };
+
+  const getFieldExtraction = (fieldPath: string): FieldExtraction | undefined => {
+    return submission?.extractionResult?.fieldExtractions.find(fe => fe.fieldPath === fieldPath);
+  };
+
+  const formatValue = (value: any): string => {
+    if (value === null || value === undefined) return 'N/A';
+    if (typeof value === 'object') return JSON.stringify(value);
+    if (typeof value === 'number' && value > 1000) {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
+    }
+    return String(value);
+  };
+
+  const getSourceColor = (source: string) => {
+    const colors: Record<string, string> = {
+      email_body: 'bg-blue-100 text-blue-800',
+      acord: 'bg-green-100 text-green-800',
+      sov: 'bg-purple-100 text-purple-800',
+      loss_run: 'bg-orange-100 text-orange-800',
+      schedule: 'bg-pink-100 text-pink-800',
+      supplemental: 'bg-yellow-100 text-yellow-800',
+      other: 'bg-gray-100 text-gray-800',
+    };
+    return colors[source] || colors.other;
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-slate-200 border-t-slate-900 mb-4"></div>
+          <p className="text-slate-600 font-medium">Loading submission...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !submission) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 font-medium mb-4">{error || 'Submission not found'}</p>
+          <Link href="/dashboard" className="text-blue-600 hover:text-blue-800">
+            ← Back to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const allFields = submission.extractionResult 
+    ? flattenData(submission.extractionResult.data)
+    : [];
+
+  // Group fields by section
+  const sections: Record<string, Array<typeof allFields[0]>> = {};
+  allFields.forEach(field => {
+    const section = field.path.split('.')[0] || 'other';
+    if (!sections[section]) {
+      sections[section] = [];
+    }
+    sections[section].push(field);
+  });
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <Link href="/dashboard" className="text-blue-600 hover:text-blue-800 mb-2 inline-block">
+                ← Back to Dashboard
+              </Link>
+              <h1 className="text-3xl font-bold text-slate-900">Submission Reviewer</h1>
+              <p className="text-slate-600 mt-2">
+                {submission.subject} • From: {submission.from}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          {Object.entries(sections).map(([sectionName, fields]) => (
+            <div key={sectionName} className="border-b border-slate-200 last:border-b-0">
+              <div className="bg-slate-50 px-6 py-4">
+                <h2 className="text-lg font-semibold text-slate-900 capitalize">
+                  {sectionName === 'submission' ? 'Submission Information' :
+                   sectionName === 'locations' ? 'Locations & Buildings' :
+                   sectionName === 'coverage' ? 'Coverage & Limits' :
+                   sectionName === 'lossHistory' ? 'Loss History' :
+                   sectionName}
+                </h2>
+              </div>
+              <div className="px-6 py-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {fields.map((field) => {
+                    const extraction = getFieldExtraction(field.path);
+                    const hasValue = field.value !== null && field.value !== undefined && field.value !== '';
+                    const isClickable = hasValue && extraction && extraction.documentChunk;
+
+                    return (
+                      <div
+                        key={field.path}
+                        className={`p-4 rounded-lg border ${
+                          hasValue
+                            ? 'bg-green-50 border-green-200'
+                            : 'bg-slate-50 border-slate-200'
+                        } ${isClickable ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+                        onClick={() => {
+                          if (isClickable && extraction) {
+                            setSelectedField(extraction);
+                          }
+                        }}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1">
+                            <div className="text-sm font-semibold text-slate-700 mb-1">
+                              {field.displayName}
+                            </div>
+                            <div className={`text-base font-medium ${
+                              hasValue ? 'text-green-900' : 'text-slate-500 italic'
+                            }`}>
+                              {formatValue(field.value)}
+                            </div>
+                          </div>
+                          {extraction && (
+                            <span className={`ml-2 px-2 py-1 text-xs font-semibold rounded-full ${getSourceColor(extraction.source)}`}>
+                              {extraction.source}
+                            </span>
+                          )}
+                        </div>
+                        {isClickable && (
+                          <div className="mt-2 text-xs text-blue-600">
+                            Click to view source document →
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Document Chunk Popup */}
+      {selectedField && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setSelectedField(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">
+                  {selectedField.fieldName}
+                </h2>
+                <p className="text-sm text-slate-600 mt-1">
+                  Source: <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getSourceColor(selectedField.source)}`}>
+                    {selectedField.source}
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedField(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">Extracted Value</h3>
+                <div className="bg-green-50 rounded-lg p-4 text-lg font-semibold text-green-900">
+                  {selectedField.fieldValue || 'N/A'}
+                </div>
+              </div>
+
+              {selectedField.documentChunk && (
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-2">Document Excerpt</h3>
+                  <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                    {selectedField.highlightedText ? (
+                      <div
+                        className="text-sm text-slate-900 whitespace-pre-wrap font-mono"
+                        dangerouslySetInnerHTML={{ __html: selectedField.highlightedText }}
+                      />
+                    ) : (
+                      <div className="text-sm text-slate-900 whitespace-pre-wrap font-mono">
+                        {selectedField.documentChunk}
+                      </div>
+                    )}
+                  </div>
+                  <style jsx global>{`
+                    mark {
+                      background-color: #fef08a;
+                      padding: 2px 4px;
+                      border-radius: 2px;
+                      font-weight: 600;
+                    }
+                  `}</style>
+                </div>
+              )}
+
+              {selectedField.confidence && (
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-2">Confidence</h3>
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <div className="text-sm text-blue-900">
+                      {(selectedField.confidence * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
