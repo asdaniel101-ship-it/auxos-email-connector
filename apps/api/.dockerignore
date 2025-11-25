@@ -1,0 +1,11 @@
+../pnpm-lock.yaml
+../package.json
+../.npmrc
+../node_modules
+../apps/web
+../apps/worker
+../.git
+../.github
+../*.md
+!README.md
+
