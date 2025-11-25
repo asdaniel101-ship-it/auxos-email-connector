@@ -12,7 +12,8 @@
   "functions": {
     "api/index.ts": {
       "maxDuration": 60,
-      "includeFiles": "apps/api/dist/**"
+      "includeFiles": "apps/api/dist/**",
+      "memory": 3008
     }
   }
 }
