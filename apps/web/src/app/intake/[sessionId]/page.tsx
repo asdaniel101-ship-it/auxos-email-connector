@@ -49,6 +49,7 @@ export default function IntakePage() {
     // Poll for session updates every 5 seconds
     const interval = setInterval(loadSession, 5000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
   useEffect(() => {
@@ -180,7 +181,7 @@ export default function IntakePage() {
               ? errorData.message 
               : 'An error occurred. Please try again.';
           }
-        } catch (e) {
+        } catch {
           // If response isn't JSON, use status text
           if (response.status === 404) {
             errorMessage = 'Session not found. Please start over.';

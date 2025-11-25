@@ -199,19 +199,24 @@ function DashboardPageContent() {
     // Helper to get nested value from object
     const getNestedValue = (obj: Record<string, unknown>, path: string): unknown => {
       const parts = path.split('.');
-      let current = obj;
+      let current: unknown = obj;
       for (const part of parts) {
         if (part.includes('[')) {
           const [key, indexStr] = part.split('[');
           const index = parseInt(indexStr.replace(']', ''), 10);
-          if (current && current[key] && Array.isArray(current[key]) && current[key][index]) {
-            current = current[key][index];
+          if (current && typeof current === 'object' && current !== null && key in current) {
+            const currentObj = current as Record<string, unknown>;
+            if (Array.isArray(currentObj[key]) && currentObj[key][index] !== undefined) {
+              current = (currentObj[key] as unknown[])[index];
+            } else {
+              return undefined;
+            }
           } else {
             return undefined;
           }
         } else {
-          if (current && typeof current === 'object' && part in current) {
-            current = current[part];
+          if (current && typeof current === 'object' && current !== null && part in current) {
+            current = (current as Record<string, unknown>)[part];
           } else {
             return undefined;
           }
@@ -312,6 +317,7 @@ function DashboardPageContent() {
   };
 
   // Flatten the data structure to show all fields (legacy - now using generateAllFields)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const flattenData = (obj: Record<string, unknown>, path = ''): Array<{ path: string; name: string; value: unknown; displayName: string }> => {
     return generateAllFields(obj);
   };
