@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "pnpm install && pnpm --filter api build",
-  "installCommand": "pnpm install",
+  "buildCommand": "pnpm install --no-frozen-lockfile && pnpm --filter api build",
+  "installCommand": "pnpm install --no-frozen-lockfile",
   "outputDirectory": "apps/api/dist",
   "framework": null,
   "functions": {
