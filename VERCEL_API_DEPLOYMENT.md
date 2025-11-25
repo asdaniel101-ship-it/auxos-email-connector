@@ -14,23 +14,43 @@ Your email polling should work fine since it's stateless and makes connections o
 
 ### Step 1: Create Separate Vercel Project for API
 
+**IMPORTANT**: This must be a **NEW, SEPARATE** project from your frontend!
+
 1. Go to https://vercel.com
-2. Click "Add New..." → "Project"
-3. Import your GitHub repository: `brokerzeroashton1`
-4. Select branch: `feature/email-intake-mvp`
-5. Click "Deploy" (we'll configure it next)
+2. Click "Add New..." → "Project" (NOT "Settings" on your existing project)
+3. If you see your existing project, click "Add New..." button at the top
+4. Import your GitHub repository: `brokerzeroashton1`
+5. Select branch: `feature/email-intake-mvp`
+6. **Before clicking Deploy**, click "Configure Project" or "Edit" button
+7. You should see a fresh project configuration screen
 
 ### Step 2: Configure Project Settings
 
-After initial deploy, go to **Settings** → **General**:
+**If you're in the "Configure Project" screen** (before first deploy):
 
-- **Root Directory**: Leave empty (uses repo root)
-- **Framework Preset**: Select "Other"
-- **Build Command**: `pnpm install && pnpm --filter api run build`
-- **Output Directory**: `apps/api/dist` (but NestJS doesn't use this - see Step 3)
-- **Install Command**: `pnpm install`
+1. **Project Name**: Give it a name like `auxo-api` or `insurance-app-api`
+2. **Root Directory**: Leave empty (uses repo root)
+3. **Framework Preset**: Click "Edit" and select "Other" (or "Node.js")
+4. **Build Command**: You'll see `pnpm --filter web run build` - **CHANGE IT** to:
+   ```
+   pnpm install && pnpm --filter api run build
+   ```
+5. **Output Directory**: Leave empty (not used for serverless)
+6. **Install Command**: Should be `pnpm install` (verify this)
+7. Click "Deploy"
 
-**Important**: NestJS doesn't work as a traditional Vercel serverless function. We need to create a serverless adapter.
+**If you already deployed and can't change settings:**
+1. Go to your API project (make sure it's the NEW project, not your frontend)
+2. Go to **Settings** → **General**
+3. Scroll down to "Build & Development Settings"
+4. Find "Build Command" and click "Override" button
+5. Enter: `pnpm install && pnpm --filter api run build`
+6. Click "Save"
+7. Go to "Deployments" tab
+8. Click "..." (three dots) on the latest deployment
+9. Click "Redeploy"
+
+**Note**: If you don't see an "Override" button, you may need to delete the project and recreate it, or contact Vercel support.
 
 ### Step 3: Vercel Serverless Adapter (Already Created)
 

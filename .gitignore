@@ -38,3 +38,4 @@ prisma/migrations/**/migration.sql
 
 # Development docs and helper scripts (optional - can commit if helpful)
 .dev-docs/
+.vercel

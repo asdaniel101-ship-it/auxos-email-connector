@@ -1,5 +1,4 @@
 {
-  "buildCommand": "pnpm --filter web run build",
+  "buildCommand": "pnpm install && pnpm --filter api run build",
   "installCommand": "pnpm install"
 }
-
