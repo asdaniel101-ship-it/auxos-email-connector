@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "buildCommand": "cd apps/api && pnpm install && pnpm prisma generate && pnpm build",
+  "buildCommand": "pnpm install && pnpm prisma generate && pnpm build",
   "installCommand": "pnpm install",
-  "outputDirectory": "apps/api/dist",
+  "outputDirectory": "dist",
   "framework": null,
   "functions": {
     "api/index.ts": {
