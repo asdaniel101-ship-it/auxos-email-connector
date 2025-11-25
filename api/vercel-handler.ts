@@ -1,7 +1,12 @@
 // Vercel serverless function - NestJS adapter
-import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+// Use CommonJS require for better compatibility
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const require = createRequire(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 let cachedApp: any;
 
@@ -11,41 +16,19 @@ async function createApp() {
   }
 
   try {
-    // Try to load CommonJS modules - use dynamic import which should handle both
-    let AppModule: any;
-    let LoggingInterceptor: any;
+    const { NestFactory } = await import('@nestjs/core');
+    const { ValidationPipe, Logger } = await import('@nestjs/common');
+    const { ConfigService } = await import('@nestjs/config');
+
+    // Load built CommonJS modules
+    const appModulePath = require.resolve('../apps/api/dist/src/app.module.js');
+    const interceptorPath = require.resolve('../apps/api/dist/src/common/interceptors/logging.interceptor.js');
     
-    try {
-      // Dynamic import should work for both ESM and CommonJS with interop
-      const appModule = await import('../apps/api/dist/src/app.module.js');
-      const interceptorModule = await import('../apps/api/dist/src/common/interceptors/logging.interceptor.js');
-      
-      // Handle CommonJS exports (exports.AppModule) or ESM default exports
-      AppModule = appModule.AppModule || appModule.default?.AppModule || appModule.default;
-      LoggingInterceptor = interceptorModule.LoggingInterceptor || interceptorModule.default?.LoggingInterceptor || interceptorModule.default;
-      
-      console.log('Loaded AppModule:', AppModule ? 'Success' : 'Failed');
-      console.log('AppModule exports:', Object.keys(appModule));
-    } catch (importError) {
-      console.error('Import failed:', importError);
-      // Try with createRequire as fallback
-      try {
-        const { createRequire } = await import('module');
-        // @ts-ignore - import.meta.url might not be available
-        const require = createRequire(typeof import.meta !== 'undefined' ? import.meta.url : __filename);
-        const appModulePath = require.resolve('../apps/api/dist/src/app.module.js');
-        const interceptorPath = require.resolve('../apps/api/dist/src/common/interceptors/logging.interceptor.js');
-        
-        const appModule = require(appModulePath);
-        const interceptorModule = require(interceptorPath);
-        
-        AppModule = appModule.AppModule || appModule.default;
-        LoggingInterceptor = interceptorModule.LoggingInterceptor || interceptorModule.default;
-      } catch (requireError) {
-        console.error('Require also failed:', requireError);
-        throw new Error(`Failed to load AppModule: ${importError instanceof Error ? importError.message : String(importError)}`);
-      }
-    }
+    const appModule = require(appModulePath);
+    const interceptorModule = require(interceptorPath);
+    
+    const AppModule = appModule.AppModule || appModule.default;
+    const LoggingInterceptor = interceptorModule.LoggingInterceptor || interceptorModule.default;
 
     if (!AppModule) {
       throw new Error('AppModule is undefined after loading');
@@ -62,6 +45,7 @@ async function createApp() {
       'http://localhost:3000',
       'http://127.0.0.1:3000',
       frontendUrl,
+      'https://auxos-email-connector2.vercel.app',
     ].filter(Boolean);
 
     app.enableCors({

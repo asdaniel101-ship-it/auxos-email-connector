@@ -5,15 +5,16 @@
   "outputDirectory": "apps/api/dist",
   "framework": null,
   "functions": {
-    "apps/api/api/index.ts": {
+    "api/index.ts": {
       "maxDuration": 60,
-      "memory": 1024
+      "memory": 1024,
+      "includeFiles": "apps/api/dist/**"
     }
   },
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/apps/api/api/index.ts"
+      "dest": "/api/index.ts"
     }
   ]
 }
