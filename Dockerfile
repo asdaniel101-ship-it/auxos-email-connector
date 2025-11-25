@@ -1,15 +1,18 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
 # Copy API package files (from apps/api directory)
-COPY apps/api/package.json apps/api/package-lock.json ./
+COPY apps/api/package.json ./
 COPY apps/api/prisma ./prisma/
 COPY apps/api/tsconfig*.json ./
 COPY apps/api/nest-cli.json ./
 
-# Install dependencies
-RUN npm cache clean --force && npm install --legacy-peer-deps
+# Install dependencies without lockfile first, then with lockfile
+RUN npm cache clean --force && \
+    rm -f package-lock.json && \
+    npm install --legacy-peer-deps --no-package-lock && \
+    npm install --legacy-peer-deps
 
 # Generate Prisma client
 RUN npx prisma generate
