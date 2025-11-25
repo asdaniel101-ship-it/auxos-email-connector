@@ -8,9 +8,10 @@ COPY apps/api/prisma ./prisma/
 COPY apps/api/tsconfig*.json ./
 COPY apps/api/nest-cli.json ./
 
-# Install dependencies (skip lockfile to avoid npm bug)
+# Install dependencies using npm ci approach but without lockfile
+# This avoids the "extraneous" npm bug
 RUN npm cache clean --force && \
-    npm install --legacy-peer-deps --no-package-lock
+    npm install --legacy-peer-deps --no-package-lock --no-audit --no-fund
 
 # Generate Prisma client
 RUN npx prisma generate
