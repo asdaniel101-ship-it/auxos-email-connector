@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "corepack enable && corepack prepare pnpm@10.18.2 --activate && pnpm install --no-frozen-lockfile && cd apps/api && pnpm prisma generate && pnpm build",
-  "installCommand": "corepack enable && corepack prepare pnpm@10.18.2 --activate && pnpm install --no-frozen-lockfile",
+  "buildCommand": "npm install && cd apps/api && npm install && npx prisma generate && npm run build",
+  "installCommand": "npm install",
   "outputDirectory": "apps/api/dist",
   "framework": null,
   "functions": {
