@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "pnpm install && pnpm prisma generate && pnpm build",
-  "installCommand": "pnpm install",
+  "buildCommand": "cd ../.. && pnpm install && cd apps/api && pnpm prisma generate && pnpm build",
+  "installCommand": "cd ../.. && pnpm install",
   "outputDirectory": "dist",
   "framework": null,
   "functions": {
