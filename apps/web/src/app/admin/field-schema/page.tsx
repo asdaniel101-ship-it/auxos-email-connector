@@ -149,21 +149,24 @@ function FieldSchemaAdminContent() {
       // Handle array items structure like "locations[items]"
       if (part.includes('[items]')) {
         const key = part.replace('[items]', '');
-        if (current[key] && current[key].items) {
-          current = current[key].items;
+        const currentObj = current as FieldData;
+        if (currentObj[key] && typeof currentObj[key] === 'object' && 'items' in currentObj[key]) {
+          const arrayField = currentObj[key] as { type: string; items: FieldData };
+          current = arrayField.items;
         } else {
           return null;
         }
       } else {
-        if (current && current[part]) {
-          current = current[part];
+        const currentObj = current as FieldData;
+        if (currentObj && currentObj[part] && typeof currentObj[part] === 'object') {
+          current = currentObj[part] as FieldData | FieldDefinition | { type: string; description: string; items: FieldData };
         } else {
           return null;
         }
       }
     }
 
-    if (current && 'type' in current) {
+    if (current && typeof current === 'object' && 'type' in current && typeof current.type === 'string') {
       return current as FieldDefinition;
     }
     return null;
@@ -262,20 +265,21 @@ function FieldSchemaAdminContent() {
   const renderSection = (sectionName: string, sectionData: FieldData) => {
     const fields: JSX.Element[] = [];
 
-    const processObject = (obj: FieldData | FieldDefinition | { type: string; description: string; items: FieldData }, prefix: string, depth: number = 0) => {
+    const processObject = (obj: FieldData | FieldDefinition | { type: string; description: string; items: FieldData }, prefix: string, _depth: number = 0) => {
       if (!obj || typeof obj !== 'object') return;
 
       // Check if this is an array type definition
       if ('type' in obj && obj.type === 'array' && 'items' in obj) {
         // Process the items structure
         if (obj.items && typeof obj.items === 'object') {
-          processObject(obj.items, `${prefix}[items]`, depth + 1);
+          processObject(obj.items, `${prefix}[items]`, _depth + 1);
         }
         return;
       }
 
       // Process regular object fields
-      for (const [key, value] of Object.entries(obj)) {
+      const objAsData = obj as FieldData;
+      for (const [key, value] of Object.entries(objAsData)) {
         const fieldPath = prefix ? `${prefix}.${key}` : key;
 
         if (value && typeof value === 'object') {
@@ -284,10 +288,10 @@ function FieldSchemaAdminContent() {
             fields.push(renderField(key, value as FieldDefinition, fieldPath));
           } else if ('items' in value) {
             // It's an array type - recurse into items
-            processObject(value, fieldPath, depth + 1);
+            processObject(value, fieldPath, _depth + 1);
           } else {
             // It's a nested object - recurse
-            processObject(value, fieldPath, depth + 1);
+            processObject(value as FieldData, fieldPath, _depth + 1);
           }
         }
       }
