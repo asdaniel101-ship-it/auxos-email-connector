@@ -1,14 +1,14 @@
 {
   "version": 2,
-  "buildCommand": "bash build-api.sh",
-  "installCommand": "echo 'Install handled in build command'",
-  "outputDirectory": "apps/api/dist",
+  "buildCommand": "npm install && npx prisma generate && npm run build",
+  "installCommand": "npm install",
+  "outputDirectory": "dist",
   "framework": null,
   "functions": {
     "api/index.ts": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "apps/api/dist/**"
+      "includeFiles": "dist/**"
     }
   },
   "routes": [
