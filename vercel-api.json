@@ -1,7 +1,7 @@
 {
   "version": 2,
   "buildCommand": "bash build-api.sh",
-  "installCommand": "pnpm install --no-frozen-lockfile",
+  "installCommand": "echo 'Install handled in build command'",
   "outputDirectory": "apps/api/dist",
   "framework": null,
   "functions": {
