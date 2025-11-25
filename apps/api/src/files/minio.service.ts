@@ -4,6 +4,7 @@ import * as Minio from 'minio';
 @Injectable()
 export class MinioService implements OnModuleInit {
   private client: Minio.Client;
+  private readonly bucketName: string;
 
   constructor() {
     // Initialize MinIO client - supports both local Docker and cloud S3-compatible services
@@ -20,11 +21,15 @@ export class MinioService implements OnModuleInit {
       accessKey: process.env.MINIO_ACCESS_KEY || 'dev',
       secretKey: process.env.MINIO_SECRET_KEY || 'dev12345',
     });
+    
+    // Bucket name is configurable (default: 'documents')
+    // For AWS S3, use your actual bucket name
+    this.bucketName = process.env.MINIO_BUCKET_NAME || 'documents';
   }
 
   async onModuleInit() {
-    // Ensure the 'documents' bucket exists
-    const bucketName = 'documents';
+    // Ensure the bucket exists
+    const bucketName = this.bucketName;
     const exists = await this.client.bucketExists(bucketName);
     
     if (!exists) {
@@ -45,7 +50,7 @@ export class MinioService implements OnModuleInit {
     fileName: string,
     expirySeconds = 3600,
   ): Promise<{ url: string; fileKey: string }> {
-    const bucketName = 'documents';
+    const bucketName = this.bucketName;
     
     // Generate a unique file key with timestamp to avoid collisions
     const timestamp = Date.now();
@@ -71,7 +76,7 @@ export class MinioService implements OnModuleInit {
     fileKey: string,
     expirySeconds = 3600,
   ): Promise<string> {
-    const bucketName = 'documents';
+    const bucketName = this.bucketName;
     const url = await this.client.presignedGetObject(
       bucketName,
       fileKey,
