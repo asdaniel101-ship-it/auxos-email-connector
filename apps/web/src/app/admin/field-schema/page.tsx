@@ -112,7 +112,7 @@ function FieldSchemaAdminContent() {
         const key = part.replace('[items]', '');
         const currentObj = current as FieldData;
         if (!currentObj[key] || typeof currentObj[key] !== 'object') {
-          currentObj[key] = { type: 'array', items: {} };
+          currentObj[key] = { type: 'array', description: '', items: {} };
         }
         const arrayField = currentObj[key] as { type: string; items: FieldData };
         if (!arrayField.items) arrayField.items = {};
@@ -262,8 +262,8 @@ function FieldSchemaAdminContent() {
     );
   };
 
-  const renderSection = (sectionName: string, sectionData: FieldData) => {
-    const fields: JSX.Element[] = [];
+  const renderSection = (sectionName: string, sectionData: FieldData | FieldDefinition | { type: string; description: string; items: FieldData }) => {
+    const fields: React.ReactElement[] = [];
 
     const processObject = (obj: FieldData | FieldDefinition | { type: string; description: string; items: FieldData }, prefix: string, _depth: number = 0) => {
       if (!obj || typeof obj !== 'object') return;
