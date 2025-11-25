@@ -13,6 +13,7 @@ import { FilesModule } from './files/files.module';
 import { ExtractedFieldsController } from './extracted-fields/extracted-fields.controller';
 import { DocumentsModule } from './documents/documents.module';
 import { FieldDefinitionsModule } from './field-definitions/field-definitions.module';
+import { FieldSchemaModule } from './field-schema/field-schema.module';
 import { EmailModule } from './email/email.module';
 import { EmailIntakeModule } from './email-intake/email-intake.module';
 import { HealthModule } from './health/health.module';
@@ -41,6 +42,7 @@ import { validateEnv } from './config/env.validation';
     FilesModule,
     DocumentsModule,
     FieldDefinitionsModule,
+    FieldSchemaModule,
     EmailModule,
     EmailIntakeModule,
     HealthModule,

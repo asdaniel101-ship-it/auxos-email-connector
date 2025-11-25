@@ -50,6 +50,9 @@ export default function ConditionalHeader() {
           <Link href="/upload-eml" className="hover:text-slate-900 transition-colors">
             Upload .eml
           </Link>
+          <Link href="/admin/field-schema" className="hover:text-slate-900 transition-colors">
+            Field Schema
+          </Link>
         </nav>
         <div className="md:hidden flex flex-col gap-3 text-sm text-slate-600">
           <div className="flex gap-4 justify-center">
@@ -61,6 +64,9 @@ export default function ConditionalHeader() {
             </Link>
             <Link href="/upload-eml" className="hover:text-slate-900 transition-colors">
               Upload .eml
+            </Link>
+            <Link href="/admin/field-schema" className="hover:text-slate-900 transition-colors">
+              Field Schema
             </Link>
           </div>
         </div>
