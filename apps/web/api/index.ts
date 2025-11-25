@@ -1,3 +1,3 @@
-// Vercel serverless function entry point (when root is apps/web)
+// Vercel serverless function entry point (when root is repo root)
 // Point directly to the NestJS adapter
-export { default } from '../../api/vercel';
+export { default } from '../../apps/api/vercel';
