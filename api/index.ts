@@ -1,3 +1,4 @@
-// Vercel serverless function - NestJS adapter
-// Import from local file in same directory
-export { default } from './vercel-handler';
+// Vercel serverless function entry point
+// Import handler directly
+import handler from './vercel-handler';
+export default handler;

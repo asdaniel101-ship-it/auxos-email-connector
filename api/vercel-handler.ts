@@ -1,11 +1,7 @@
 // Vercel serverless function - NestJS adapter
-// Use createRequire to load CommonJS modules from dist
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
 
 let cachedApp: any;
 
@@ -15,18 +11,35 @@ async function createApp() {
   }
 
   try {
-    // The dist files are CommonJS, so we need to use require
-    const appModulePath = require.resolve('../apps/api/dist/src/app.module.js');
-    const interceptorPath = require.resolve('../apps/api/dist/src/common/interceptors/logging.interceptor.js');
+    // Try to load the CommonJS module using require
+    // In ESM, we can use createRequire or dynamic import with interop
+    let AppModule: any;
+    let LoggingInterceptor: any;
     
-    const appModule = require(appModulePath);
-    const interceptorModule = require(interceptorPath);
-    
-    const AppModule = appModule.AppModule || appModule.default?.AppModule || appModule.default;
-    const LoggingInterceptor = interceptorModule.LoggingInterceptor || interceptorModule.default?.LoggingInterceptor || interceptorModule.default;
+    try {
+      // First try: use createRequire for CommonJS modules
+      const { createRequire } = await import('module');
+      const require = createRequire(import.meta.url);
+      const appModulePath = require.resolve('../apps/api/dist/src/app.module.js');
+      const interceptorPath = require.resolve('../apps/api/dist/src/common/interceptors/logging.interceptor.js');
+      
+      const appModule = require(appModulePath);
+      const interceptorModule = require(interceptorPath);
+      
+      AppModule = appModule.AppModule || appModule.default?.AppModule || appModule.default;
+      LoggingInterceptor = interceptorModule.LoggingInterceptor || interceptorModule.default?.LoggingInterceptor || interceptorModule.default;
+    } catch (requireError) {
+      // Fallback: try dynamic import
+      console.log('createRequire failed, trying dynamic import:', requireError);
+      const appModule = await import('../apps/api/dist/src/app.module.js');
+      const interceptorModule = await import('../apps/api/dist/src/common/interceptors/logging.interceptor.js');
+      
+      AppModule = appModule.AppModule || appModule.default?.AppModule || appModule.default;
+      LoggingInterceptor = interceptorModule.LoggingInterceptor || interceptorModule.default?.LoggingInterceptor || interceptorModule.default;
+    }
 
     if (!AppModule) {
-      throw new Error(`Could not find AppModule. Available exports: ${Object.keys(appModule).join(', ')}`);
+      throw new Error(`Could not find AppModule. Tried both require and import.`);
     }
 
     // NestJS uses Express by default, so we can create the app normally
@@ -73,12 +86,9 @@ async function createApp() {
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : '';
-    Logger.error(`Failed to create app: ${errorMsg}`, 'Bootstrap');
-    console.error('Full error details:', {
-      message: errorMsg,
-      stack: errorStack,
-      error: error
-    });
+    console.error('Failed to create app:', errorMsg);
+    console.error('Stack:', errorStack);
+    console.error('Full error:', error);
     throw error;
   }
 }
