@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import PasswordProtection from '@/components/PasswordProtection';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+import { getApiUrl } from '@/lib/api-url';
+const API_URL = getApiUrl();
 
 interface FieldDefinition {
   type: string;

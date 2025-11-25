@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+import { getApiUrl } from '@/lib/api-url';
+const API = getApiUrl();
 
 interface UploadedFile {
   fileName: string;

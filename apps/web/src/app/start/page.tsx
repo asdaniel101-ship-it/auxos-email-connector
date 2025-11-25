@@ -3,6 +3,7 @@
 import { useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { getApiUrl } from '@/lib/api-url';
 
 // Default restaurant coverages: GL, WC, and BOP are the most common for restaurants
 const DEFAULT_COVERAGES = ['GL', 'WC', 'BOP'];
@@ -46,7 +47,7 @@ function StartPageContent() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+  const API_URL = getApiUrl();
 
   const toggleCoverage = (coverageId: string) => {
     setSelectedCoverages((prev) =>

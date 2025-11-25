@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import PasswordProtection from '@/components/PasswordProtection';
+import { getApiUrl } from '@/lib/api-url';
 
 interface ExtractedField {
   id: string;
@@ -57,7 +58,7 @@ export default function PartnersDashboard() {
   const [, setPartnerId] = useState<string>('');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+  const API_URL = getApiUrl();
 
   useEffect(() => {
     // In a real app, you'd get partnerId from auth/session

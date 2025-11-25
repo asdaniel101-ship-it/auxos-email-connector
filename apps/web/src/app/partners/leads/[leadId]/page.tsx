@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import PasswordProtection from '@/components/PasswordProtection';
+import { getApiUrl } from '@/lib/api-url';
 
 interface Lead {
   id: string;
@@ -30,7 +31,7 @@ export default function LeadDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [partnerId, setPartnerId] = useState<string>('');
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+  const API_URL = getApiUrl();
 
   useEffect(() => {
     const storedPartnerId = localStorage.getItem('partnerId');

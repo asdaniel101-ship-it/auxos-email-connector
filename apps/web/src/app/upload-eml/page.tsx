@@ -4,7 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import PasswordProtection from '@/components/PasswordProtection';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+import { getApiUrl } from '@/lib/api-url';
+const API_URL = getApiUrl();
 
 function UploadEmlPageContent() {
   const [file, setFile] = useState<File | null>(null);

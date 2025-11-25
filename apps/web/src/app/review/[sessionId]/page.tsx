@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { getApiUrl } from '@/lib/api-url';
 
 interface ExtractedField {
   id: string;
@@ -53,7 +54,7 @@ export default function ReviewPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<Record<string, unknown>>({});
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+  const API_URL = getApiUrl();
 
   useEffect(() => {
     loadLead();
