@@ -2,11 +2,11 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json ./
-COPY prisma ./prisma/
-COPY tsconfig*.json ./
-COPY nest-cli.json ./
+# Copy API package files (from apps/api directory)
+COPY apps/api/package.json apps/api/package-lock.json ./
+COPY apps/api/prisma ./prisma/
+COPY apps/api/tsconfig*.json ./
+COPY apps/api/nest-cli.json ./
 
 # Install dependencies
 RUN npm cache clean --force && npm install --legacy-peer-deps
@@ -15,7 +15,7 @@ RUN npm cache clean --force && npm install --legacy-peer-deps
 RUN npx prisma generate
 
 # Copy source code
-COPY src ./src/
+COPY apps/api/src ./src/
 
 # Build the application
 RUN npm run build
