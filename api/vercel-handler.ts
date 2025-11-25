@@ -1,5 +1,5 @@
 // Vercel serverless function - NestJS adapter
-// Use dynamic imports to load modules at runtime
+// Use require for CommonJS compatibility in Vercel
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -12,9 +12,22 @@ async function createApp() {
   }
 
   try {
-    // Dynamic import of AppModule from dist
-    const { AppModule } = await import('../apps/api/dist/src/app.module.js');
-    const { LoggingInterceptor } = await import('../apps/api/dist/src/common/interceptors/logging.interceptor.js');
+    // Use dynamic import with .js extension for ESM compatibility
+    // The dist files are CommonJS, so we need to handle this correctly
+    const appModulePath = '../apps/api/dist/src/app.module.js';
+    const interceptorPath = '../apps/api/dist/src/common/interceptors/logging.interceptor.js';
+    
+    // For Vercel, we need to use require for CommonJS modules
+    // But since we're in ESM context, we'll use dynamic import
+    const appModule = await import(appModulePath);
+    const interceptorModule = await import(interceptorPath);
+    
+    const AppModule = appModule.AppModule || appModule.default?.AppModule || appModule.default;
+    const LoggingInterceptor = interceptorModule.LoggingInterceptor || interceptorModule.default?.LoggingInterceptor || interceptorModule.default;
+
+    if (!AppModule) {
+      throw new Error(`Could not find AppModule in ${appModulePath}. Exports: ${Object.keys(appModule).join(', ')}`);
+    }
 
     // NestJS uses Express by default, so we can create the app normally
     const app = await NestFactory.create(AppModule);
@@ -37,7 +50,9 @@ async function createApp() {
     });
 
     // Add global logging interceptor
-    app.useGlobalInterceptors(new LoggingInterceptor());
+    if (LoggingInterceptor) {
+      app.useGlobalInterceptors(new LoggingInterceptor());
+    }
 
     // Validate incoming DTOs automatically
     app.useGlobalPipes(
@@ -56,7 +71,11 @@ async function createApp() {
     Logger.log('Vercel serverless app initialized', 'Bootstrap');
     return cachedApp;
   } catch (error) {
-    Logger.error(`Failed to create app: ${error instanceof Error ? error.message : String(error)}`, 'Bootstrap');
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : '';
+    Logger.error(`Failed to create app: ${errorMsg}`, 'Bootstrap');
+    Logger.error(`Stack: ${errorStack}`, 'Bootstrap');
+    console.error('Full error:', error);
     throw error;
   }
 }
