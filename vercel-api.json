@@ -1,11 +1,11 @@
 {
   "version": 2,
-  "buildCommand": "pnpm install && pnpm prisma generate && pnpm build",
+  "buildCommand": "pnpm install && cd apps/api && pnpm prisma generate && pnpm build",
   "installCommand": "pnpm install",
-  "outputDirectory": "dist",
+  "outputDirectory": "apps/api/dist",
   "framework": null,
   "functions": {
-    "api/index.ts": {
+    "apps/api/api/index.ts": {
       "maxDuration": 60,
       "memory": 1024
     }
@@ -13,7 +13,7 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/api/index.ts"
+      "dest": "/apps/api/api/index.ts"
     }
   ]
 }
