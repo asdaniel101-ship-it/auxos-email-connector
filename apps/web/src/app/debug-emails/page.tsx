@@ -26,8 +26,8 @@ interface EmailMessage {
   extractionResult: {
     id: string;
     summaryText: string | null;
-    data: any;
-    qaFlags: any;
+    data: Record<string, unknown>;
+    qaFlags: Record<string, unknown> | null;
   } | null;
 }
 
@@ -36,7 +36,20 @@ function DebugEmailsPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
-  const [imapStatus, setImapStatus] = useState<any>(null);
+  const [imapStatus, setImapStatus] = useState<{
+    success: boolean;
+    email: string;
+    totalEmails: number;
+    unreadCount: number;
+    emails: Array<{
+      uid: number;
+      date: string | null;
+      isUnread: boolean;
+      subject: string;
+      from: string;
+    }>;
+    error?: string;
+  } | null>(null);
   const [checkingImap, setCheckingImap] = useState(false);
   const [reprocessing, setReprocessing] = useState<string | null>(null);
 
@@ -218,7 +231,7 @@ function DebugEmailsPageContent() {
                           </tr>
                         </thead>
                         <tbody>
-                          {imapStatus.emails.map((email: any, idx: number) => (
+                          {imapStatus.emails.map((email, idx: number) => (
                             <tr key={idx} className="border-b">
                               <td className="px-2 py-1">{email.uid}</td>
                               <td className="px-2 py-1">{email.date ? new Date(email.date).toLocaleString() : 'N/A'}</td>
@@ -242,7 +255,7 @@ function DebugEmailsPageContent() {
         {emails.length === 0 ? (
           <div className="text-center py-10 bg-white rounded-lg shadow-sm border border-slate-200">
             <p className="text-slate-600">No emails found in the last 24 hours.</p>
-            <p className="text-sm text-slate-500 mt-2">Try clicking "Trigger Poll Now" to check for new emails.</p>
+            <p className="text-sm text-slate-500 mt-2">Try clicking &quot;Trigger Poll Now&quot; to check for new emails.</p>
           </div>
         ) : (
           <div className="bg-white shadow-md rounded-lg overflow-hidden border border-slate-200">

@@ -48,13 +48,13 @@ interface Lead {
   ownerName?: string | null;
   ownerEmail?: string | null;
   ownerPhone?: string | null;
-  [key: string]: any; // For any other fields
+  [key: string]: unknown; // For any other fields
 }
 
 export default function PartnersDashboard() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [partnerId, setPartnerId] = useState<string>('');
+  const [, setPartnerId] = useState<string>('');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -74,6 +74,7 @@ export default function PartnersDashboard() {
         loadLeads(id);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadLeads = async (id: string) => {
@@ -85,7 +86,7 @@ export default function PartnersDashboard() {
       }
       const data = await response.json();
       // Debug: log to see if activelyLookingForInsurance is being returned
-      console.log('Loaded leads:', data.map((l: any) => ({ 
+      console.log('Loaded leads:', data.map((l: Lead) => ({ 
         id: l.id, 
         name: l.legalBusinessName, 
         vertical: l.session?.vertical,
@@ -143,8 +144,8 @@ export default function PartnersDashboard() {
     return String(value);
   };
 
-  const getAllLeadFields = (lead: Lead): Array<{ name: string; value: any; source: 'chat' | 'extracted' }> => {
-    const fields: Array<{ name: string; value: any; source: 'chat' | 'extracted' }> = [];
+  const getAllLeadFields = (lead: Lead): Array<{ name: string; value: unknown; source: 'chat' | 'extracted' }> => {
+    const fields: Array<{ name: string; value: unknown; source: 'chat' | 'extracted' }> = [];
     
     // Common fields to display
     const fieldNames = [

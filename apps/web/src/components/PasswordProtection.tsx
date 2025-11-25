@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 
 const ADMIN_PASSWORD = 'Insurance123';
 
@@ -9,7 +8,6 @@ export default function PasswordProtection({ children }: { children: React.React
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [error, setError] = useState('');
-  const router = useRouter();
 
   useEffect(() => {
     // Check if already authenticated in session storage

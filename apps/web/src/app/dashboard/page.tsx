@@ -222,7 +222,7 @@ function DashboardPageContent() {
 
     // Process submission fields
     if (expectedFieldsSchema.submission) {
-      for (const [key, defaultValue] of Object.entries(expectedFieldsSchema.submission)) {
+      for (const [key] of Object.entries(expectedFieldsSchema.submission)) {
         const path = `submission.${key}`;
         const value = getNestedValue(extractedData, path);
         allFields.push({
@@ -262,6 +262,7 @@ function DashboardPageContent() {
           const maxBuildings = Math.max(1, buildings.length);
           
           for (let bldIdx = 0; bldIdx < maxBuildings; bldIdx++) {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const building = (buildings[bldIdx] || {}) as Record<string, unknown>;
             
             for (const [key] of Object.entries(buildingTemplate)) {
@@ -281,7 +282,7 @@ function DashboardPageContent() {
 
     // Process coverage fields
     if (expectedFieldsSchema.coverage) {
-      for (const [key, defaultValue] of Object.entries(expectedFieldsSchema.coverage)) {
+      for (const [key] of Object.entries(expectedFieldsSchema.coverage)) {
         const path = `coverage.${key}`;
         const value = getNestedValue(extractedData, path);
         allFields.push({
@@ -295,7 +296,7 @@ function DashboardPageContent() {
 
     // Process loss history fields
     if (expectedFieldsSchema.lossHistory) {
-      for (const [key, defaultValue] of Object.entries(expectedFieldsSchema.lossHistory)) {
+      for (const [key] of Object.entries(expectedFieldsSchema.lossHistory)) {
         const path = `lossHistory.${key}`;
         const value = getNestedValue(extractedData, path);
         allFields.push({
@@ -368,7 +369,6 @@ function DashboardPageContent() {
                     const source = extraction?.source || 'email_body';
                     const extractionHasValue = extraction?.fieldValue !== null && extraction?.fieldValue !== undefined && extraction?.fieldValue !== '';
                     const isClickable = hasValue && extraction && extraction.documentChunk && extractionHasValue;
-                    const hasExtraction = extraction !== undefined;
 
                     return (
                       <div

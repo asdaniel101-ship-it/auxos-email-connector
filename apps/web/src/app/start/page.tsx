@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -135,7 +135,7 @@ export default function StartPage() {
 
     try {
       // Map form data to API expected format
-      const apiData: any = {
+      const apiData: Record<string, unknown> = {
         vertical: formData.vertical,
         businessType: formData.businessType,
         businessName: formData.businessName,
@@ -178,7 +178,7 @@ export default function StartPage() {
             errorMessage = errorData.message || errorData.error || errorMessage;
           }
           console.error('API Error Response:', errorData);
-        } catch (e) {
+        } catch {
           // Response might not be JSON
           const text = await response.text();
           console.error('Non-JSON Error Response:', text);
@@ -233,7 +233,7 @@ export default function StartPage() {
       }
 
       router.push(`/intake/${session.id}`);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating session:', error);
       let errorMessage = 'Failed to start. Please try again.';
       

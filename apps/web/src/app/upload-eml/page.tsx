@@ -9,7 +9,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 function UploadEmlPageContent() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -51,8 +51,8 @@ function UploadEmlPageContent() {
 
       const data = await response.json();
       setResult(data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to upload file');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload file');
       console.error('Upload error:', err);
     } finally {
       setUploading(false);
@@ -151,7 +151,7 @@ function UploadEmlPageContent() {
             <h2 className="text-lg font-semibold text-slate-900 mb-3">Instructions</h2>
             <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600">
               <li>Select a .eml file from your computer</li>
-              <li>Click "Upload & Process" to start processing</li>
+              <li>Click &quot;Upload &amp; Process&quot; to start processing</li>
               <li>Wait for processing to complete (this may take a minute)</li>
               <li>View the results on the dashboard</li>
             </ol>

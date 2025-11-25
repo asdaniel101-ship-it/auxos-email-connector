@@ -303,7 +303,7 @@ export default function IntakePage() {
           <div className="bg-blue-50 border-b border-blue-200/50">
             <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
               <p className="text-sm text-blue-800 text-center">
-                💡 <strong>You're always welcome to skip any question</strong> or proceed straight to review if you'd like. We'll work with whatever information you provide.
+                💡 <strong>You&apos;re always welcome to skip any question</strong> or proceed straight to review if you&apos;d like. We&apos;ll work with whatever information you provide.
               </p>
             </div>
           </div>
@@ -318,8 +318,8 @@ export default function IntakePage() {
                 <div className="flex items-center justify-center h-full min-h-[400px]">
                   <div className="text-center max-w-md">
                     <div className="text-5xl mb-4 animate-pulse">💬</div>
-                    <h2 className="text-xl font-semibold text-slate-900 mb-2">Let's get started!</h2>
-                    <p className="text-slate-600">I'll ask you a few questions to help you get the best quotes.</p>
+                    <h2 className="text-xl font-semibold text-slate-900 mb-2">Let&apos;s get started!</h2>
+                    <p className="text-slate-600">I&apos;ll ask you a few questions to help you get the best quotes.</p>
                   </div>
                 </div>
               )}
@@ -375,7 +375,11 @@ export default function IntakePage() {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
-                      sendMessage(e);
+                      const form = e.currentTarget.closest('form');
+                      if (form) {
+                        const formEvent = new Event('submit', { bubbles: true, cancelable: true }) as unknown as React.FormEvent<HTMLFormElement>;
+                        sendMessage(formEvent);
+                      }
                     }
                   }}
                 />

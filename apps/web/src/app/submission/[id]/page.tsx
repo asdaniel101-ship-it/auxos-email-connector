@@ -28,7 +28,7 @@ interface Submission {
   receivedAt: string;
   extractionResult: {
     id: string;
-    data: any;
+    data: Record<string, unknown>;
     fieldExtractions: FieldExtraction[];
   } | null;
   attachments: Array<{
@@ -40,7 +40,6 @@ interface Submission {
 
 function SubmissionReviewerContent() {
   const params = useParams();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [loading, setLoading] = useState(true);
@@ -163,9 +162,10 @@ function SubmissionReviewerContent() {
     },
   };
 
-  // Flatten the data structure to show all fields
-  const flattenData = (obj: any, prefix = '', path = ''): Array<{ path: string; name: string; value: any; displayName: string }> => {
-    const fields: Array<{ path: string; name: string; value: any; displayName: string }> = [];
+  // Flatten the data structure to show all fields (unused but kept for reference)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const flattenData = (obj: Record<string, unknown>, prefix = '', path = ''): Array<{ path: string; name: string; value: unknown; displayName: string }> => {
+    const fields: Array<{ path: string; name: string; value: unknown; displayName: string }> = [];
     
     const formatFieldName = (name: string) => {
       return name
@@ -214,7 +214,7 @@ function SubmissionReviewerContent() {
   };
 
   // Generate all expected fields from schema and merge with extracted data
-  const generateAllFields = (extractedData: any): Array<{ path: string; name: string; value: any; displayName: string }> => {
+  const generateAllFields = (extractedData: Record<string, unknown>): Array<{ path: string; name: string; value: unknown; displayName: string }> => {
     const formatFieldName = (name: string) => {
       return name
         .replace(/([A-Z])/g, ' $1')
@@ -222,7 +222,7 @@ function SubmissionReviewerContent() {
         .trim();
     };
 
-    const allFields: Array<{ path: string; name: string; value: any; displayName: string }> = [];
+    const allFields: Array<{ path: string; name: string; value: unknown; displayName: string }> = [];
     
     // Helper to get nested value from object
     const getNestedValue = (obj: Record<string, unknown>, path: string): unknown => {
@@ -250,7 +250,7 @@ function SubmissionReviewerContent() {
 
     // Process submission fields
     if (expectedFieldsSchema.submission) {
-      for (const [key, defaultValue] of Object.entries(expectedFieldsSchema.submission)) {
+      for (const [key] of Object.entries(expectedFieldsSchema.submission)) {
         const path = `submission.${key}`;
         const value = getNestedValue(extractedData, path);
         allFields.push({
@@ -290,6 +290,7 @@ function SubmissionReviewerContent() {
           const maxBuildings = Math.max(1, buildings.length);
           
           for (let bldIdx = 0; bldIdx < maxBuildings; bldIdx++) {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const building = (buildings[bldIdx] || {}) as Record<string, unknown>;
             
             for (const [key] of Object.entries(buildingTemplate)) {
@@ -309,7 +310,7 @@ function SubmissionReviewerContent() {
 
     // Process coverage fields
     if (expectedFieldsSchema.coverage) {
-      for (const [key, defaultValue] of Object.entries(expectedFieldsSchema.coverage)) {
+      for (const [key] of Object.entries(expectedFieldsSchema.coverage)) {
         const path = `coverage.${key}`;
         const value = getNestedValue(extractedData, path);
         allFields.push({
@@ -323,7 +324,7 @@ function SubmissionReviewerContent() {
 
     // Process loss history fields
     if (expectedFieldsSchema.lossHistory) {
-      for (const [key, defaultValue] of Object.entries(expectedFieldsSchema.lossHistory)) {
+      for (const [key] of Object.entries(expectedFieldsSchema.lossHistory)) {
         const path = `lossHistory.${key}`;
         const value = getNestedValue(extractedData, path);
         allFields.push({
@@ -342,7 +343,7 @@ function SubmissionReviewerContent() {
     return submission?.extractionResult?.fieldExtractions.find(fe => fe.fieldPath === fieldPath);
   };
 
-  const formatValue = (value: any): string => {
+  const formatValue = (value: unknown): string => {
     if (value === null || value === undefined) return 'N/A';
     if (typeof value === 'object') return JSON.stringify(value);
     if (typeof value === 'number' && value > 1000) {
@@ -452,7 +453,6 @@ function SubmissionReviewerContent() {
                     const source = extraction?.source || 'email_body';
                     const extractionHasValue = extraction?.fieldValue !== null && extraction?.fieldValue !== undefined && extraction?.fieldValue !== '';
                     const isClickable = hasValue && extraction && extraction.documentChunk && extractionHasValue;
-                    const hasExtraction = extraction !== undefined;
 
                     return (
                       <div

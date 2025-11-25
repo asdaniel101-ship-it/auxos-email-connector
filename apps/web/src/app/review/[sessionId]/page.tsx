@@ -51,12 +51,13 @@ export default function ReviewPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState<any>({});
+  const [editData, setEditData] = useState<Record<string, unknown>>({});
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
   useEffect(() => {
     loadLead();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
   const loadLead = async () => {
@@ -85,7 +86,7 @@ export default function ReviewPage() {
       };
       setLead(leadData);
       // Initialize editData with lead's current values and extracted field values
-      const initialEditData: any = { ...leadData };
+      const initialEditData: Record<string, unknown> = { ...leadData };
       leadData.extractedFields?.forEach(field => {
         initialEditData[`extracted_${field.id}`] = field.fieldValue;
       });
@@ -123,7 +124,7 @@ export default function ReviewPage() {
 
     setIsSubmitting(true);
     try {
-      const updateData: any = {};
+      const updateData: Record<string, unknown> = {};
       
       if (editData.legalBusinessName !== undefined) updateData.legalBusinessName = editData.legalBusinessName || null;
       if (editData.primaryAddress !== undefined) updateData.primaryAddress = editData.primaryAddress || null;

@@ -140,7 +140,7 @@ export default function IntakePage() {
 
     try {
       // Create submission - only send non-empty fields
-      const payload: any = { businessName: formData.businessName };
+      const payload: Record<string, string> = { businessName: formData.businessName };
       if (formData.address?.trim()) payload.address = formData.address;
       if (formData.city?.trim()) payload.city = formData.city;
       if (formData.state?.trim()) payload.state = formData.state;

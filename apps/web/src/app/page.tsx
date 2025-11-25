@@ -31,7 +31,7 @@ export default function Home() {
       } else {
         alert('Failed to send feedback. Please try again.');
       }
-    } catch (error) {
+    } catch {
       alert('Failed to send feedback. Please try again.');
     } finally {
       setSubmitting(false);
