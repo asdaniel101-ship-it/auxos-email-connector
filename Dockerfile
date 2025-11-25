@@ -1,7 +1,4 @@
-FROM node:20-alpine
-
-# Install yarn
-RUN npm install -g yarn
+FROM node:18-alpine
 
 WORKDIR /app
 
@@ -11,9 +8,12 @@ COPY apps/api/prisma ./prisma/
 COPY apps/api/tsconfig*.json ./
 COPY apps/api/nest-cli.json ./
 
-# Install dependencies using yarn (avoids npm extraneous bug)
-RUN yarn install --frozen-lockfile --network-timeout 100000 || \
-    yarn install --network-timeout 100000
+# Install specific npm version that doesn't have the extraneous bug
+RUN npm install -g npm@9.9.3
+
+# Install dependencies - use npm@9 which doesn't have the extraneous bug
+RUN npm cache clean --force && \
+    npm install --legacy-peer-deps --no-package-lock
 
 # Generate Prisma client
 RUN npx prisma generate
@@ -22,11 +22,11 @@ RUN npx prisma generate
 COPY apps/api/src ./src/
 
 # Build the application
-RUN yarn build
+RUN npm run build
 
 # Expose port (Railway will set PORT env var)
 EXPOSE 4000
 
 # Start the application
-CMD ["yarn", "start:prod"]
+CMD ["npm", "run", "start:prod"]
 
