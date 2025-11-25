@@ -1,28 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-
-const ADMIN_PASSWORD = 'Insurance123';
+import { useState } from 'react';
+import { useAdminAuth } from '@/hooks/useAdminAuth';
 
 export default function PasswordProtection({ children }: { children: React.ReactNode }) {
   const [password, setPassword] = useState('');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    // Check if already authenticated in session storage
-    const auth = sessionStorage.getItem('admin_authenticated');
-    if (auth === 'true') {
-      setIsAuthenticated(true);
-    }
-  }, []);
+  const { isAuthenticated, login } = useAdminAuth();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === ADMIN_PASSWORD) {
-      setIsAuthenticated(true);
-      sessionStorage.setItem('admin_authenticated', 'true');
+    if (login(password)) {
       setError('');
+      setPassword('');
     } else {
       setError('Incorrect password. Please try again.');
       setPassword('');
