@@ -1,7 +1,5 @@
 {
-  "buildCommand": "cd apps/api && pnpm run build",
-  "outputDirectory": "apps/api/dist",
-  "installCommand": "pnpm install",
-  "framework": null
+  "buildCommand": "pnpm --filter web run build",
+  "installCommand": "pnpm install"
 }
 
