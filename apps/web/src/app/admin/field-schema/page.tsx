@@ -99,9 +99,9 @@ function FieldSchemaAdminContent() {
   const saveField = (fieldPath: string) => {
     if (!schema || !editValues) return;
 
-    const newSchema = JSON.parse(JSON.stringify(schema));
+    const newSchema = JSON.parse(JSON.stringify(schema)) as FieldData;
     const pathParts = fieldPath.split('.');
-    let current: any = newSchema;
+    let current: FieldData | { type: string; description: string; items: FieldData } = newSchema;
 
     // Navigate to the parent object
     for (let i = 0; i < pathParts.length - 1; i++) {
@@ -110,17 +110,25 @@ function FieldSchemaAdminContent() {
       // Handle array items structure like "locations[items]"
       if (part.includes('[items]')) {
         const key = part.replace('[items]', '');
-        if (!current[key]) current[key] = { type: 'array', items: {} };
-        if (!current[key].items) current[key].items = {};
-        current = current[key].items;
+        const currentObj = current as FieldData;
+        if (!currentObj[key] || typeof currentObj[key] !== 'object') {
+          currentObj[key] = { type: 'array', items: {} };
+        }
+        const arrayField = currentObj[key] as { type: string; items: FieldData };
+        if (!arrayField.items) arrayField.items = {};
+        current = arrayField.items;
       } else {
-        if (!current[part]) current[part] = {};
-        current = current[part];
+        const currentObj = current as FieldData;
+        if (!currentObj[part] || typeof currentObj[part] !== 'object') {
+          currentObj[part] = {};
+        }
+        current = currentObj[part] as FieldData;
       }
     }
 
     const fieldName = pathParts[pathParts.length - 1];
-    current[fieldName] = {
+    const currentObj = current as FieldData;
+    currentObj[fieldName] = {
       type: editValues.type,
       description: editValues.description,
       ...(editValues.whereToLook ? { whereToLook: editValues.whereToLook } : {}),
@@ -132,9 +140,10 @@ function FieldSchemaAdminContent() {
     setEditValues(null);
   };
 
-  const getFieldByPath = (data: any, path: string): FieldDefinition | null => {
+  const getFieldByPath = (data: FieldData | null, path: string): FieldDefinition | null => {
+    if (!data) return null;
     const pathParts = path.split('.');
-    let current: any = data;
+    let current: FieldData | FieldDefinition | { type: string; description: string; items: FieldData } = data;
 
     for (const part of pathParts) {
       // Handle array items structure like "locations[items]"
@@ -160,7 +169,7 @@ function FieldSchemaAdminContent() {
     return null;
   };
 
-  const renderField = (fieldName: string, field: FieldDefinition, fieldPath: string, sectionName: string) => {
+  const renderField = (fieldName: string, field: FieldDefinition, fieldPath: string) => {
     const isEditing = editingField === fieldPath;
     const displayName = fieldName
       .replace(/([A-Z])/g, ' $1')
@@ -250,10 +259,10 @@ function FieldSchemaAdminContent() {
     );
   };
 
-  const renderSection = (sectionName: string, sectionData: any) => {
+  const renderSection = (sectionName: string, sectionData: FieldData) => {
     const fields: JSX.Element[] = [];
 
-    const processObject = (obj: any, prefix: string, depth: number = 0) => {
+    const processObject = (obj: FieldData | FieldDefinition | { type: string; description: string; items: FieldData }, prefix: string, depth: number = 0) => {
       if (!obj || typeof obj !== 'object') return;
 
       // Check if this is an array type definition
@@ -272,7 +281,7 @@ function FieldSchemaAdminContent() {
         if (value && typeof value === 'object') {
           if ('type' in value && typeof value.type === 'string') {
             // It's a field definition (has type, description, etc.)
-            fields.push(renderField(key, value as FieldDefinition, fieldPath, sectionName));
+            fields.push(renderField(key, value as FieldDefinition, fieldPath));
           } else if ('items' in value) {
             // It's an array type - recurse into items
             processObject(value, fieldPath, depth + 1);
@@ -360,7 +369,7 @@ function FieldSchemaAdminContent() {
 
           {hasChanges && (
             <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
-              You have unsaved changes. Click "Save All Changes" to apply them.
+              You have unsaved changes. Click &quot;Save All Changes&quot; to apply them.
             </div>
           )}
 
