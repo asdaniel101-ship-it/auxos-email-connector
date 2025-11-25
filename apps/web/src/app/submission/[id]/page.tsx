@@ -83,6 +83,86 @@ function SubmissionReviewerContent() {
     }
   };
 
+  // Expected field schema - all fields we should always display
+  const expectedFieldsSchema = {
+    submission: {
+      submissionId: null,
+      carrierName: null,
+      brokerName: null,
+      brokerEmail: null,
+      brokerPhone: null,
+      namedInsured: null,
+      mailingAddress: null,
+      naicsCode: null,
+      operationsDescription: null,
+      submissionType: null,
+      effectiveDate: null,
+      expirationDate: null,
+      priorCarrier: null,
+      priorPolicyNumber: null,
+    },
+    locations: [{
+      locationNumber: null,
+      buildings: [{
+        buildingNumber: null,
+        buildingName: null,
+        riskAddress: null,
+        city: null,
+        state: null,
+        zipCode: null,
+        buildingSqFt: null,
+        numberOfStories: null,
+        yearBuilt: null,
+        yearRenovated: null,
+        constructionType: null,
+        roofType: null,
+        roofYearUpdated: null,
+        primaryOccupancy: null,
+        occupancyPercentage: null,
+        buildingUseHours: null,
+        sprinklered: null,
+        sprinklerType: null,
+        sprinklerPercentage: null,
+        fireAlarmType: null,
+        burglarAlarmType: null,
+        distanceToHydrantFeet: null,
+        distanceToFireStationMiles: null,
+        fireProtectionClass: null,
+        neighbouringExposures: null,
+        buildingLimit: null,
+      }],
+    }],
+    coverage: {
+      policyType: null,
+      causeOfLossForm: null,
+      coinsurancePercent: null,
+      valuationMethod: null,
+      buildingLimit: null,
+      businessPersonalPropertyLimit: null,
+      businessIncomeLimit: null,
+      deductibleAllPeril: null,
+      windHailDeductible: null,
+      floodCoverage: null,
+      earthquakeCoverage: null,
+      equipmentBreakdownCoverage: null,
+      ordinanceOrLawCoverage: null,
+      terrorismCoverage: null,
+      blanketCoverageFlag: null,
+      blanketDescription: null,
+    },
+    lossHistory: {
+      lossHistoryPeriodYears: null,
+      numberOfClaims: null,
+      totalIncurredLoss: null,
+      largestSingleLoss: null,
+      anyOpenClaims: null,
+      anyCatLosses: null,
+      lossNarrativeSummary: null,
+      paidLoss: null,
+      outstandingReserve: null,
+    },
+  };
+
   // Flatten the data structure to show all fields
   const flattenData = (obj: any, prefix = '', path = ''): Array<{ path: string; name: string; value: any; displayName: string }> => {
     const fields: Array<{ path: string; name: string; value: any; displayName: string }> = [];
@@ -131,6 +211,131 @@ function SubmissionReviewerContent() {
     }
     
     return fields;
+  };
+
+  // Generate all expected fields from schema and merge with extracted data
+  const generateAllFields = (extractedData: any): Array<{ path: string; name: string; value: any; displayName: string }> => {
+    const formatFieldName = (name: string) => {
+      return name
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (str) => str.toUpperCase())
+        .trim();
+    };
+
+    const allFields: Array<{ path: string; name: string; value: any; displayName: string }> = [];
+    
+    // Helper to get nested value from object
+    const getNestedValue = (obj: Record<string, unknown>, path: string): unknown => {
+      const parts = path.split('.');
+      let current = obj;
+      for (const part of parts) {
+        if (part.includes('[')) {
+          const [key, indexStr] = part.split('[');
+          const index = parseInt(indexStr.replace(']', ''), 10);
+          if (current && current[key] && Array.isArray(current[key]) && current[key][index]) {
+            current = current[key][index];
+          } else {
+            return undefined;
+          }
+        } else {
+          if (current && typeof current === 'object' && part in current) {
+            current = current[part];
+          } else {
+            return undefined;
+          }
+        }
+      }
+      return current;
+    };
+
+    // Process submission fields
+    if (expectedFieldsSchema.submission) {
+      for (const [key, defaultValue] of Object.entries(expectedFieldsSchema.submission)) {
+        const path = `submission.${key}`;
+        const value = getNestedValue(extractedData, path);
+        allFields.push({
+          path,
+          name: key,
+          value: value !== undefined ? value : null,
+          displayName: formatFieldName(key),
+        });
+      }
+    }
+
+    // Process locations and buildings
+    if (expectedFieldsSchema.locations && expectedFieldsSchema.locations[0]) {
+      const locationTemplate = expectedFieldsSchema.locations[0];
+      const extractedLocations = extractedData?.locations || [];
+      
+      // Always show at least one location
+      const maxLocations = Math.max(1, extractedLocations.length);
+      
+      for (let locIdx = 0; locIdx < maxLocations; locIdx++) {
+      const location = (extractedLocations[locIdx] || {}) as Record<string, unknown>;
+      
+      // Location number
+      allFields.push({
+        path: `locations[${locIdx}].locationNumber`,
+        name: 'locationNumber',
+        value: location.locationNumber !== undefined ? location.locationNumber : null,
+        displayName: `Location ${locIdx + 1} - Location Number`,
+      });
+
+        // Process buildings
+        if (locationTemplate.buildings && Array.isArray(locationTemplate.buildings) && locationTemplate.buildings[0]) {
+          const buildingTemplate = locationTemplate.buildings[0] as Record<string, unknown>;
+          const buildings = (location.buildings || []) as Array<Record<string, unknown>>;
+          
+          // Always show at least one building per location
+          const maxBuildings = Math.max(1, buildings.length);
+          
+          for (let bldIdx = 0; bldIdx < maxBuildings; bldIdx++) {
+            const building = (buildings[bldIdx] || {}) as Record<string, unknown>;
+            
+            for (const [key] of Object.entries(buildingTemplate)) {
+              const path = `locations[${locIdx}].buildings[${bldIdx}].${key}`;
+              const value = getNestedValue(extractedData, path);
+              allFields.push({
+                path,
+                name: key,
+                value: value !== undefined ? value : null,
+                displayName: `Location ${locIdx + 1} - Building ${bldIdx + 1} - ${formatFieldName(key)}`,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Process coverage fields
+    if (expectedFieldsSchema.coverage) {
+      for (const [key, defaultValue] of Object.entries(expectedFieldsSchema.coverage)) {
+        const path = `coverage.${key}`;
+        const value = getNestedValue(extractedData, path);
+        allFields.push({
+          path,
+          name: key,
+          value: value !== undefined ? value : null,
+          displayName: formatFieldName(key),
+        });
+      }
+    }
+
+    // Process loss history fields
+    if (expectedFieldsSchema.lossHistory) {
+      for (const [key, defaultValue] of Object.entries(expectedFieldsSchema.lossHistory)) {
+        const path = `lossHistory.${key}`;
+        const value = getNestedValue(extractedData, path);
+        allFields.push({
+          path,
+          name: key,
+          value: value !== undefined ? value : null,
+          displayName: formatFieldName(key),
+        });
+      }
+    }
+
+    return allFields;
   };
 
   const getFieldExtraction = (fieldPath: string): FieldExtraction | undefined => {
@@ -183,9 +388,10 @@ function SubmissionReviewerContent() {
     );
   }
 
+  // Generate all expected fields (always show all fields from schema)
   const allFields = submission.extractionResult 
-    ? flattenData(submission.extractionResult.data)
-    : [];
+    ? generateAllFields(submission.extractionResult.data)
+    : generateAllFields({});
 
   // Group fields by section
   const sections: Record<string, Array<typeof allFields[0]>> = {};

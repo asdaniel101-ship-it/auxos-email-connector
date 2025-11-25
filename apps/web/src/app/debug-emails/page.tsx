@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import PasswordProtection from '@/components/PasswordProtection';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -30,7 +31,7 @@ interface EmailMessage {
   } | null;
 }
 
-export default function DebugEmailsPage() {
+function DebugEmailsPageContent() {
   const [emails, setEmails] = useState<EmailMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -324,6 +325,14 @@ export default function DebugEmailsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function DebugEmailsPage() {
+  return (
+    <PasswordProtection>
+      <DebugEmailsPageContent />
+    </PasswordProtection>
   );
 }
 

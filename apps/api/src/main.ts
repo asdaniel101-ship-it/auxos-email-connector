@@ -1,18 +1,42 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
+import { validateEnv } from './config/env.validation';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Validate environment variables
+  try {
+    validateEnv(process.env);
+    Logger.log('Environment variables validated', 'Bootstrap');
+  } catch (error) {
+    Logger.error(`Environment validation failed: ${error.message}`, 'Bootstrap');
+    // In production, you might want to exit here
+    // process.exit(1);
+  }
 
-  // Allow your frontend (Next.js) to call this API
+  const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
+
+  // Configure CORS - allow production frontend URL
+  const frontendUrl = configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    frontendUrl,
+  ].filter(Boolean);
+
   app.enableCors({
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: allowedOrigins,
     credentials: true,
     methods: 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type,Authorization',
+    allowedHeaders: 'Content-Type,Authorization,X-API-Key',
   });
+
+  // Add global logging interceptor
+  app.useGlobalInterceptors(new LoggingInterceptor());
 
   // Validate incoming DTOs automatically
   app.useGlobalPipes(

@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import PasswordProtection from '@/components/PasswordProtection';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
-export default function UploadEmlPage() {
+function UploadEmlPageContent() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<any>(null);
@@ -161,6 +162,14 @@ export default function UploadEmlPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function UploadEmlPage() {
+  return (
+    <PasswordProtection>
+      <UploadEmlPageContent />
+    </PasswordProtection>
   );
 }
 

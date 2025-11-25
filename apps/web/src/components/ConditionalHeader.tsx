@@ -19,7 +19,7 @@ export default function ConditionalHeader() {
             <AuxoLogo />
             <div>
               <span className="block text-sm text-slate-500">
-                Insurance & funding made easy for restaurants.
+                Process insurance submissions faster.
               </span>
             </div>
           </div>
@@ -36,7 +36,7 @@ export default function ConditionalHeader() {
           <AuxoLogo />
           <div>
             <span className="block text-sm text-slate-500">
-              Insurance & funding made easy for restaurants.
+              Process insurance submissions faster.
             </span>
           </div>
         </Link>
@@ -47,9 +47,6 @@ export default function ConditionalHeader() {
           <Link href="/debug-emails" className="hover:text-slate-900 transition-colors">
             Debug Emails
           </Link>
-          <Link href="/partners/dashboard" className="hover:text-slate-900 transition-colors">
-            Partner Portal
-          </Link>
           <Link href="/upload-eml" className="hover:text-slate-900 transition-colors">
             Upload .eml
           </Link>
@@ -59,8 +56,8 @@ export default function ConditionalHeader() {
             <Link href="/dashboard" className="hover:text-slate-900 transition-colors">
               Dashboard
             </Link>
-            <Link href="/partners/dashboard" className="hover:text-slate-900 transition-colors">
-              Partner Portal
+            <Link href="/debug-emails" className="hover:text-slate-900 transition-colors">
+              Debug Emails
             </Link>
             <Link href="/upload-eml" className="hover:text-slate-900 transition-colors">
               Upload .eml
@@ -71,4 +68,3 @@ export default function ConditionalHeader() {
     </header>
   );
 }
-

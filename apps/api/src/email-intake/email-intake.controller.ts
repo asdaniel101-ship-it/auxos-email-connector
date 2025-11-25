@@ -5,6 +5,7 @@ import { EmailIntakeService } from './email-intake.service';
 import { EmailListenerService } from './email-listener.service';
 import { PrismaService } from '../prisma.service';
 import { MinioService } from '../files/minio.service';
+import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('email-intake')
 @Controller('email-intake')
@@ -104,6 +105,7 @@ export class EmailIntakeController {
   }
 
   @Get('submissions')
+  @Public()
   @ApiOperation({ summary: 'Get all processed submissions (for admin dashboard)' })
   @ApiResponse({ status: 200, description: 'List of submissions' })
   async getAllSubmissions(
@@ -117,6 +119,7 @@ export class EmailIntakeController {
   }
 
   @Get('submissions/:id')
+  @Public()
   @ApiOperation({ summary: 'Get a single submission by ID' })
   @ApiResponse({ status: 200, description: 'Submission details' })
   async getSubmission(@Param('id') id: string) {
@@ -151,6 +154,7 @@ export class EmailIntakeController {
   }
 
   @Get('submissions/:id/email-body')
+  @Public()
   @ApiOperation({ summary: 'Get the email body for a submission' })
   @ApiResponse({ status: 200, description: 'Email body text' })
   async getEmailBody(@Param('id') id: string) {

@@ -2,6 +2,7 @@ import { Controller, Post, Get, Param, Body, HttpException, HttpStatus } from '@
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
 import { ChatMessageDto } from './dto/chat-message.dto';
+import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('chat')
 @Controller('chat')
@@ -9,6 +10,7 @@ export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
   @Post(':sessionId')
+  @Public()
   @ApiOperation({ summary: 'Send a chat message' })
   @ApiResponse({ status: 200, description: 'Message processed successfully' })
   @ApiResponse({ status: 400, description: 'Invalid request' })
@@ -33,6 +35,7 @@ export class ChatController {
   }
 
   @Post(':sessionId/skip')
+  @Public()
   @ApiOperation({ summary: 'Skip the current question' })
   @ApiResponse({ status: 200, description: 'Question skipped successfully' })
   async skipQuestion(@Param('sessionId') sessionId: string) {
@@ -48,6 +51,7 @@ export class ChatController {
   }
 
   @Get(':sessionId')
+  @Public()
   @ApiOperation({ summary: 'Get conversation history' })
   async getHistory(@Param('sessionId') sessionId: string) {
     // This would be handled by sessions endpoint, but keeping for API completeness

@@ -214,18 +214,44 @@ export class EmailIntakeService {
         error?: string;
       }> = [];
       for (const uid of newUids) {
-        try {
-          // Fetch and store email first
-          const emailData = await this.emailListener.fetchAndStoreEmail(uid);
-          // Then process it (pass body from parsed email)
-          const result = await this.processEmail(
-            emailData.gmailMessageId,
-            emailData.body || '',
-          );
-          results.push({ uid, success: true, result });
-        } catch (error) {
-          this.logger.error(`Failed to process message UID ${uid}:`, error);
-          results.push({ uid, success: false, error: error instanceof Error ? error.message : String(error) });
+        const maxRetries = 3;
+        let lastError: Error | null = null;
+        let success = false;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            // Fetch and store email first
+            const emailData = await this.emailListener.fetchAndStoreEmail(uid);
+            // Then process it (pass body from parsed email)
+            const result = await this.processEmail(
+              emailData.gmailMessageId,
+              emailData.body || '',
+            );
+            results.push({ uid, success: true, result });
+            success = true;
+            break;
+          } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+            this.logger.warn(
+              `Failed to process message UID ${uid} (attempt ${attempt}/${maxRetries}):`,
+              lastError.message,
+            );
+
+            // Wait before retry (exponential backoff)
+            if (attempt < maxRetries) {
+              const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // Max 10 seconds
+              await new Promise((resolve) => setTimeout(resolve, delay));
+            }
+          }
+        }
+
+        if (!success && lastError) {
+          this.logger.error(`Failed to process message UID ${uid} after ${maxRetries} attempts:`, lastError);
+          results.push({
+            uid,
+            success: false,
+            error: lastError.message,
+          });
         }
       }
 
