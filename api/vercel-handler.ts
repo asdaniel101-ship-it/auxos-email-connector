@@ -1,8 +1,8 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from '../apps/api/src/app.module';
+import { AppModule } from '../apps/api/dist/src/app.module';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { LoggingInterceptor } from '../apps/api/src/common/interceptors/logging.interceptor';
+import { LoggingInterceptor } from '../apps/api/dist/src/common/interceptors/logging.interceptor';
 
 let cachedApp: any;
 
