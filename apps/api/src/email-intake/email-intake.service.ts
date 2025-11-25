@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma.service';
 import { EmailListenerService } from './email-listener.service';
 import { SubmissionClassifierService } from './submission-classifier.service';
@@ -13,6 +14,7 @@ export class EmailIntakeService {
 
   constructor(
     private prisma: PrismaService,
+    private configService: ConfigService,
     private emailListener: EmailListenerService,
     private submissionClassifier: SubmissionClassifierService,
     private documentClassifier: DocumentClassifierService,
@@ -44,13 +46,27 @@ export class EmailIntakeService {
         throw new Error(`Email with ID ${gmailMessageId} not found`);
       }
 
+      // 2. Check if email is from our own address to prevent infinite loops
+      const systemEmail = this.configService.get<string>('GMAIL_EMAIL') || 'auxoreachout@gmail.com';
+      if (emailData.from && emailData.from.toLowerCase().includes(systemEmail.toLowerCase())) {
+        this.logger.warn(`Skipping email ${gmailMessageId} - FROM our own address: ${emailData.from}`);
+        await this.prisma.emailMessage.update({
+          where: { gmailMessageId },
+          data: {
+            processingStatus: 'done',
+            errorMessage: 'Skipped: Email from system address (prevents infinite loop)',
+          },
+        });
+        return { processed: false, reason: 'from_system_address' };
+      }
+
       // Mark as processing
       await this.prisma.emailMessage.update({
         where: { gmailMessageId },
         data: { processingStatus: 'processing' },
       });
 
-      // 2. Classify if it's a submission
+      // 3. Classify if it's a submission
       // Use provided body or empty string (body is not stored in DB, only in parsed result)
       const body = emailBody || '';
 
@@ -92,7 +108,7 @@ export class EmailIntakeService {
         return { processed: false, reason: 'not_a_submission', classificationReason: classification.reason };
       }
 
-      // 3. Classify documents
+      // 4. Classify documents
       const documentClassifications = await this.documentClassifier.classifyAll(
         emailData.attachments,
       );
@@ -105,20 +121,20 @@ export class EmailIntakeService {
         });
       }
 
-      // 4. Extract fields using LLM (add body to emailData for extraction)
+      // 5. Extract fields using LLM (add body to emailData for extraction)
       const emailDataWithBody = {
         ...emailData,
         body: body,
       };
       const extractionResult = await this.fieldExtraction.extract(emailDataWithBody, documentClassifications);
 
-      // 5. Run QA checks
+      // 6. Run QA checks
       const qaFlags = await this.qaService.runChecks(extractionResult.data);
 
-      // 6. Package response (summary, table, PDF, JSON)
+      // 7. Package response (summary, table, PDF, JSON)
       const packagedResponse = await this.responsePackager.package(extractionResult, qaFlags);
 
-      // 7. Store extraction result and field extractions (use upsert for reprocessing)
+      // 8. Store extraction result and field extractions (use upsert for reprocessing)
       const extractionResultRecord = await this.prisma.extractionResult.upsert({
         where: {
           emailMessageId: emailData.id,

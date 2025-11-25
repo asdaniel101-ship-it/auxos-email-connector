@@ -649,20 +649,59 @@ export class EmailListenerService {
         return [];
       }
 
+      // Filter out emails FROM our own address to prevent infinite loops
+      // We need to check the FROM header for each message
+      const filteredUids: number[] = [];
+      for (const uid of uids) {
+        try {
+          // Fetch just the header to check the FROM field
+          const headerMessages = await connection.search([['UID', uid]], { 
+            bodies: 'HEADER',
+            struct: true,
+          });
+          
+          if (headerMessages && headerMessages.length > 0) {
+            const headerPart = headerMessages[0].parts?.find((p: any) => p.which === 'HEADER');
+            if (headerPart && headerPart.body) {
+              const headerStr = typeof headerPart.body === 'string' 
+                ? headerPart.body 
+                : headerPart.body.toString();
+              
+              // Extract FROM field
+              const fromMatch = headerStr.match(/From:\s*(.+)/i);
+              if (fromMatch) {
+                const fromField = fromMatch[1].trim();
+                // Check if FROM contains our email address
+                if (fromField.toLowerCase().includes(this.email.toLowerCase())) {
+                  this.logger.log(`Skipping email UID ${uid} - FROM our own address: ${fromField}`);
+                  continue; // Skip this email
+                }
+              }
+            }
+          }
+          
+          filteredUids.push(uid);
+        } catch (headerError) {
+          // If we can't check the header, include it (better to process than skip incorrectly)
+          this.logger.warn(`Could not check FROM header for UID ${uid}, including it:`, headerError);
+          filteredUids.push(uid);
+        }
+      }
+
       // Check which ones we haven't processed yet
       const existing = await this.prisma.emailMessage.findMany({
         where: {
-          gmailMessageId: { in: uids.map((uid: number) => `imap-${uid}`) },
+          gmailMessageId: { in: filteredUids.map((uid: number) => `imap-${uid}`) },
         },
         select: { gmailMessageId: true },
       });
 
       const existingIds = new Set(existing.map((e) => e.gmailMessageId));
-      const newUids = uids.filter((uid: number) => !existingIds.has(`imap-${uid}`));
+      const newUids = filteredUids.filter((uid: number) => !existingIds.has(`imap-${uid}`));
 
       await connection.end();
 
-      this.logger.log(`Found ${newUids.length} new unprocessed messages (out of ${uids.length} total)`);
+      this.logger.log(`Found ${newUids.length} new unprocessed messages (out of ${filteredUids.length} filtered, ${uids.length} total)`);
       return newUids;
     } catch (error) {
       this.logger.error('Error fetching new messages:', error);
