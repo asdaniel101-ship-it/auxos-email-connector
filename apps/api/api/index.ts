@@ -1,4 +1,3 @@
-// Vercel serverless function entry point
-// Vercel automatically routes /api/* to this file
-export { default } from '../vercel';
-
+// Vercel serverless function entry point for API
+import handler from '../vercel';
+export default handler;
