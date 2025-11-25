@@ -15,5 +15,6 @@
       "includeFiles": "apps/api/dist/**",
       "memory": 1024
     }
-  }
+  },
+  "crons": []
 }
