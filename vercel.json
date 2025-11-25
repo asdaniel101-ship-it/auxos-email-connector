@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm install --no-frozen-lockfile && pnpm --filter web run build && pnpm --filter api run build",
+  "buildCommand": "pnpm install --no-frozen-lockfile && cd apps/api && pnpm prisma generate && cd ../.. && pnpm --filter web run build && pnpm --filter api run build",
   "installCommand": "pnpm install --no-frozen-lockfile",
   "outputDirectory": "apps/web/.next",
   "framework": "nextjs",
@@ -13,6 +13,7 @@
     "api/index.ts": {
       "maxDuration": 60,
       "includeFiles": "apps/api/dist/**",
+      "nodeVersion": "20.x",
       "memory": 1024
     }
   },
