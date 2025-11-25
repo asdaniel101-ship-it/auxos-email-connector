@@ -172,7 +172,9 @@ Data: ${JSON.stringify(data, null, 2)}`,
    */
   private async generatePDF(data: any, summary: string, table: string): Promise<Buffer> {
     try {
-      const PDFDocument = require('pdfkit');
+      // Dynamically import pdfkit to avoid CommonJS/ESM issues
+      const pdfkitModule = await import('pdfkit');
+      const PDFDocument = (pdfkitModule as any).default || pdfkitModule;
       const doc = new PDFDocument({ margin: 50 });
       const chunks: Buffer[] = [];
 

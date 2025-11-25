@@ -1,0 +1,26 @@
+# Exclude API and worker
+apps/api
+apps/worker
+api
+
+# Exclude build artifacts and dependencies
+node_modules
+apps/web/node_modules
+apps/web/.next
+apps/web/.vercel
+apps/web/.env.local
+apps/web/.env
+
+# Exclude development files
+*.md
+compose.yaml
+railway.json
+prisma
+packages
+test-*.sh
+*.sh
+.cursor-messages
+
+# Exclude environment files
+.env*
+!.env.example

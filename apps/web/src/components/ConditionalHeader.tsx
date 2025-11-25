@@ -1,35 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import AuxoLogo from './AuxoLogo';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 
 export default function ConditionalHeader() {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const fromEmail = searchParams.get('fromEmail') === 'true';
-  const isSubmissionPage = pathname?.startsWith('/submission/');
   const { isAuthenticated } = useAdminAuth();
-  
-  // Hide navigation if accessed via email link
-  if (isSubmissionPage && fromEmail) {
-    return (
-      <header className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
-          <div className="flex items-center gap-3">
-            <AuxoLogo />
-            <div>
-              <span className="block text-sm text-slate-500">
-                Process insurance submissions faster.
-              </span>
-            </div>
-          </div>
-        </div>
-      </header>
-    );
-  }
 
   // Normal header with navigation
   return (

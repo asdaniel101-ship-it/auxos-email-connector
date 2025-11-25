@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ReactElement } from 'react';
 import PasswordProtection from '@/components/PasswordProtection';
 
 import { getApiUrl } from '@/lib/api-url';
@@ -112,7 +112,7 @@ function FieldSchemaAdminContent() {
         const key = part.replace('[items]', '');
         const currentObj = current as FieldData;
         if (!currentObj[key] || typeof currentObj[key] !== 'object') {
-          currentObj[key] = { type: 'array', items: {} };
+          currentObj[key] = { type: 'array', description: '', items: {} };
         }
         const arrayField = currentObj[key] as { type: string; items: FieldData };
         if (!arrayField.items) arrayField.items = {};
@@ -263,7 +263,7 @@ function FieldSchemaAdminContent() {
   };
 
   const renderSection = (sectionName: string, sectionData: FieldData) => {
-    const fields: JSX.Element[] = [];
+    const fields: ReactElement[] = [];
 
     const processObject = (obj: FieldData | FieldDefinition | { type: string; description: string; items: FieldData }, prefix: string, _depth: number = 0) => {
       if (!obj || typeof obj !== 'object') return;
@@ -378,18 +378,24 @@ function FieldSchemaAdminContent() {
           )}
 
           <div className="space-y-6">
-            {Object.entries(schema).map(([sectionKey, sectionData]) => (
-              <div key={sectionKey} className="border border-slate-200 rounded-lg overflow-hidden">
-                <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
-                  <h2 className="text-xl font-semibold text-slate-900">
-                    {sectionTitles[sectionKey] || sectionKey}
-                  </h2>
+            {Object.entries(schema).map(([sectionKey, sectionData]) => {
+              // Type guard: ensure sectionData is FieldData (not FieldDefinition)
+              if (sectionData && typeof sectionData === 'object' && 'type' in sectionData && !('items' in sectionData)) {
+                return null; // Skip if it's a FieldDefinition, not a section
+              }
+              return (
+                <div key={sectionKey} className="border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
+                    <h2 className="text-xl font-semibold text-slate-900">
+                      {sectionTitles[sectionKey] || sectionKey}
+                    </h2>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    {renderSection(sectionKey, sectionData as FieldData)}
+                  </div>
                 </div>
-                <div className="p-6 space-y-4">
-                  {renderSection(sectionKey, sectionData)}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="mt-6 text-sm text-slate-500">

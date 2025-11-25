@@ -152,27 +152,7 @@ async function main() {
     });
   }
 
-  // Create demo partner for testing
-  const demoPartner = await prisma.partner.upsert({
-    where: { id: 'demo-partner-001' },
-    update: {},
-    create: {
-      id: 'demo-partner-001',
-      name: 'Demo Insurance Broker',
-      contactEmail: 'demo@insurance-broker.com',
-      verticals: ['insurance'],
-      statesServed: ['CA', 'NY', 'TX', 'FL'],
-      preferredIndustries: ['restaurant', 'retail', 'services'],
-      minEmployeeCount: 1,
-      maxEmployeeCount: 100,
-      minRevenue: 50000,
-      maxRevenue: 10000000,
-      coverageTypesInterested: ['GL', 'WC', 'BOP', 'Auto'],
-      averageLeadValueEstimate: 500,
-    },
-  });
-
-  console.log('Demo partner created:', demoPartner.id);
+  console.log('Field definitions seeded successfully');
 }
 
 main().finally(() => prisma.$disconnect());

@@ -1,23 +1,10 @@
 {
   "name": "insurance-app",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "packageManager": "pnpm@10.18.2",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "seed": "ts-node --transpile-only prisma/seed.ts",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio",
-    "up": "docker compose up -d",
-    "down": "docker compose down -v",
-    "api": "pnpm -C apps/api start:dev",
     "web": "pnpm -C apps/web dev",
-    "worker": "pnpm -C apps/worker dev",
-    "studio": "cd apps/api && npx prisma studio",
-    "migrate": "cd apps/api && npx prisma migrate dev"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "packageManager": "pnpm@10.18.2"
+    "api": "pnpm -C apps/api start:dev"
+  }
 }

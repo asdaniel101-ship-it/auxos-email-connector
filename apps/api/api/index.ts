@@ -1,4 +1,13 @@
 // Vercel serverless function entry point
-// Vercel automatically routes /api/* to this file
-export { default } from '../vercel';
+// This is a placeholder - the API is deployed separately on Railway
+export default async function handler(req: any, res: any) {
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      message: 'API is deployed on Railway, not Vercel',
+      note: 'This is a placeholder entrypoint for Vercel build compatibility'
+    })
+  };
+}
 
