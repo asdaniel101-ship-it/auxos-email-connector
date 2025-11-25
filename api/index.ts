@@ -1,3 +1,3 @@
 // Vercel serverless function - NestJS adapter
-// Import the built vercel.js file from dist
-export { default } from '../apps/api/dist/vercel.js';
+// Import from local file in same directory
+export { default } from './vercel-handler';
