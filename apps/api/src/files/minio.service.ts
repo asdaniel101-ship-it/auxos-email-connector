@@ -6,11 +6,17 @@ export class MinioService implements OnModuleInit {
   private client: Minio.Client;
 
   constructor() {
-    // Initialize MinIO client with local Docker settings
+    // Initialize MinIO client - supports both local Docker and cloud S3-compatible services
+    const endPoint = process.env.MINIO_ENDPOINT || 'localhost';
+    const useSSL = process.env.MINIO_USE_SSL === 'true';
+    const port = process.env.MINIO_PORT 
+      ? Number(process.env.MINIO_PORT) 
+      : (useSSL ? 443 : 9000);
+    
     this.client = new Minio.Client({
-      endPoint: process.env.MINIO_ENDPOINT || 'localhost',
-      port: Number(process.env.MINIO_PORT) || 9000,
-      useSSL: process.env.MINIO_USE_SSL === 'true',
+      endPoint,
+      port,
+      useSSL,
       accessKey: process.env.MINIO_ACCESS_KEY || 'dev',
       secretKey: process.env.MINIO_SECRET_KEY || 'dev12345',
     });
