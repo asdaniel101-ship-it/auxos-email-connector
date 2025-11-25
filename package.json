@@ -19,7 +19,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "packageManager": "pnpm@9.15.0",
   "dependencies": {
     "next": "15.5.4",
     "@nestjs/common": "^11.0.1",
