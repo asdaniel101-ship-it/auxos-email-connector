@@ -1,0 +1,18 @@
+-- AlterTable
+ALTER TABLE "Submission" ADD COLUMN     "additionalLocations" TEXT,
+ADD COLUMN     "businessRegistrationCert" TEXT,
+ADD COLUMN     "currentCoverages" TEXT,
+ADD COLUMN     "digitalInfrastructureProfile" TEXT,
+ADD COLUMN     "employeeList" TEXT,
+ADD COLUMN     "financialStatements" TEXT,
+ADD COLUMN     "growthPlans" TEXT,
+ADD COLUMN     "keyAssets" TEXT,
+ADD COLUMN     "ownershipStructure" TEXT,
+ADD COLUMN     "priorInsuranceDocs" TEXT,
+ADD COLUMN     "proofOfAddress" TEXT,
+ADD COLUMN     "riskToleranceLevel" TEXT,
+ADD COLUMN     "safetyManuals" TEXT,
+ADD COLUMN     "taxId" TEXT,
+ADD COLUMN     "totalClaimsCount" INTEGER,
+ADD COLUMN     "totalClaimsLoss" DECIMAL(15,2),
+ADD COLUMN     "yearsInOperation" INTEGER;

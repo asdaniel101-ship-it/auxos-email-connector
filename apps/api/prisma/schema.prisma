@@ -1,0 +1,368 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum FieldValueType {
+  string
+  number
+  decimal
+  boolean
+  text
+}
+
+// ===== SMB MARKETPLACE MODELS =====
+
+model Session {
+  id            String   @id @default(cuid())
+  vertical      String // "insurance" | "lending"
+  businessType  String? // "restaurant" | "retail" | "services" | "other"
+  ownerName     String
+  email         String
+  phone         String?
+  howDidYouHear String?
+  status        String   @default("IN_PROGRESS") // IN_PROGRESS, COMPLETED, ABANDONED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  lead      Lead?
+  messages  ConversationMessage[]
+  documents Document[]
+
+  @@index([email])
+  @@index([status])
+}
+
+model Lead {
+  id        String  @id @default(cuid())
+  sessionId String  @unique
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // ===== SHARED BUSINESS PROFILE (all verticals) =====
+  legalBusinessName    String?
+  doingBusinessAs      String?
+  entityType           String? // LLC, Corp, Sole Prop, etc.
+  fein                 String?
+  businessStartDate    DateTime?
+  yearsInOperation     Int?
+  businessDescription  String?   @db.Text
+  naicsCode            String?
+  websiteURL           String?
+  primaryAddress       String?
+  primaryCity          String?
+  primaryState         String?
+  primaryZip           String?
+  additionalLocations  Json? // Array of location objects
+  ownerName            String?
+  ownerEmail           String?
+  ownerPhone           String?
+  employeeCountTotal   Int?
+  annualRevenue        Decimal?  @db.Decimal(15, 2)
+  avgMonthlyRevenue    Decimal?  @db.Decimal(15, 2)
+  payrollAnnualTotal   Decimal?  @db.Decimal(15, 2)
+  businessHours        String?
+  stateOfIncorporation String?
+
+  // ===== INSURANCE-SPECIFIC FIELDS =====
+  activelyLookingForInsurance     Boolean?  @default(false)
+  currentCarrier                  String?
+  currentPolicyTypes              String[]  @default([])
+  currentPremiumTotal             Decimal?  @db.Decimal(15, 2)
+  desiredCoverages                String[]  @default([])
+  desiredEffectiveDate            DateTime?
+  claimsPast3YearsCount           Int?
+  claimsPast3YearsTotalPaid       Decimal?  @db.Decimal(15, 2)
+  priorCancellationsOrNonRenewals Boolean?
+  priorCancellationsDetails       String?   @db.Text
+  subcontractorUsage              Boolean?
+  subcontractorUsagePercent       Decimal?  @db.Decimal(5, 2)
+  highRiskActivities              String?   @db.Text
+  propertyOwnedOrLeased           String? // "owned" | "leased" | "both"
+  propertyValue                   Decimal?  @db.Decimal(15, 2)
+
+  // Restaurant-specific
+  seatingCapacity                Int?
+  servesAlcohol                  Boolean?
+  alcoholRevenuePercent          Decimal? @db.Decimal(5, 2)
+  deliveryOrCatering             Boolean?
+  deliveryCateringRevenuePercent Decimal? @db.Decimal(5, 2)
+  cookingMethods                 String?  @db.Text
+  fireProtection                 String?  @db.Text
+
+  // Retail-specific
+  inventoryValue                Decimal? @db.Decimal(15, 2)
+  securitySystems               String?  @db.Text
+  onsiteCustomersPerDayEstimate Int?
+
+  // ===== LENDING-SPECIFIC FIELDS =====
+  fundingPurpose               String?  @db.Text
+  amountRequested              Decimal? @db.Decimal(15, 2)
+  desiredTermMonths            Int?
+  existingDebt                 String?  @db.Text // JSON array of debt objects
+  averageBankBalance           Decimal? @db.Decimal(15, 2)
+  nsfCountLast3Months          Int?
+  creditScoreRangeSelfReported String?
+  collateralAvailable          String?  @db.Text
+
+  // ===== STATUS =====
+  status               String   @default("DRAFT") // DRAFT, IN_PROGRESS, READY_FOR_MATCH, ASSIGNED, COMPLETED
+  completionPercentage Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  fieldCandidates FieldCandidate[]
+  assignments     LeadAssignment[]
+  extractedFields ExtractedField[]
+
+  @@index([status])
+  @@index([primaryState])
+}
+
+model ConversationMessage {
+  id           String   @id @default(cuid())
+  sessionId    String
+  session      Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role         String // "user" | "assistant" | "system"
+  content      String   @db.Text
+  fieldUpdates Json? // Optional: { "employeeCountTotal": 12, ... }
+  createdAt    DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+model Document {
+  id               String   @id @default(cuid())
+  sessionId        String
+  session          Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  fileName         String
+  fileKey          String
+  fileSize         Int
+  mimeType         String
+  docType          String? // "dec_page", "loss_runs", "payroll", "bank_statement", "tax_return", "p_and_l", etc.
+  processingStatus String   @default("pending") // pending, processing, processed, failed
+  processingError  String?
+  createdAt        DateTime @default(now())
+
+  extractedFields ExtractedField[]
+
+  @@index([sessionId])
+  @@index([docType])
+  @@index([processingStatus])
+}
+
+model ExtractedField {
+  id             String    @id @default(cuid())
+  leadId         String
+  lead           Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  documentId     String?
+  document       Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  fieldName      String
+  fieldValue     String    @db.Text
+  confidence     Float?
+  source         String?
+  extractedText  String?   @db.Text
+  approved       Boolean   @default(false)
+  rejectedReason String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([leadId])
+  @@index([documentId])
+  @@index([fieldName])
+}
+
+// New: Field candidates from chat or docs (before confirmation)
+model FieldCandidate {
+  id         String   @id @default(cuid())
+  leadId     String
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fieldName  String
+  value      String   @db.Text
+  source     String // "chat" | "document" | "inferred"
+  confidence Float?
+  documentId String?
+  messageId  String?
+  createdAt  DateTime @default(now())
+
+  @@index([leadId])
+  @@index([fieldName])
+}
+
+// New: Partner model
+model Partner {
+  id           String   @id @default(cuid())
+  name         String
+  contactEmail String
+  verticals    String[] @default([]) // ["insurance"] | ["lending"] | ["insurance", "lending"]
+
+  // Insurance appetite
+  statesServed             String[] @default([])
+  preferredIndustries      String[] @default([])
+  minEmployeeCount         Int?
+  maxEmployeeCount         Int?
+  minRevenue               Decimal? @db.Decimal(15, 2)
+  maxRevenue               Decimal? @db.Decimal(15, 2)
+  coverageTypesInterested  String[] @default([])
+  averageLeadValueEstimate Decimal? @db.Decimal(15, 2)
+
+  // Lending appetite
+  minMonthlyRevenue       Decimal? @db.Decimal(15, 2)
+  minTimeInBusinessMonths Int?
+  maxLoanAmount           Decimal? @db.Decimal(15, 2)
+  riskTolerance           String? // "low" | "medium" | "high"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments LeadAssignment[]
+
+  @@index([contactEmail])
+  @@index([verticals])
+}
+
+// New: Lead assignments
+model LeadAssignment {
+  id          String    @id @default(cuid())
+  leadId      String
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  partnerId   String
+  partner     Partner   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  status      String    @default("PENDING") // PENDING, ACCEPTED, REJECTED
+  assignedAt  DateTime  @default(now())
+  respondedAt DateTime?
+
+  @@unique([leadId, partnerId])
+  @@index([partnerId])
+  @@index([leadId])
+  @@index([status])
+}
+
+// Keep FieldDefinition for metadata
+model FieldDefinition {
+  id                  String         @id @default(cuid())
+  fieldName           String         @unique
+  category            String
+  fieldType           FieldValueType
+  enteredFieldKey     String?
+  chatFieldKey        String?
+  documentFieldKey    String?
+  businessDescription String?        @db.Text
+  extractorLogic      String?        @db.Text
+  documentSources     String[]       @default([])
+  alternateFieldNames String[]       @default([])
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+}
+
+// ===== EMAIL INTAKE MVP MODELS =====
+
+enum EmailProcessingStatus {
+  pending
+  processing
+  done
+  error
+}
+
+enum SubmissionType {
+  new_business
+  renewal
+  endorsement
+  other
+}
+
+enum DocumentType {
+  email_body
+  acord
+  sov
+  loss_run
+  schedule
+  supplemental
+  other
+}
+
+model EmailMessage {
+  id                String                @id @default(cuid())
+  gmailMessageId    String                @unique
+  threadId          String
+  from              String
+  to                String[]
+  cc                String[]              @default([])
+  subject           String
+  receivedAt        DateTime
+  rawMimeStorageKey String? // Points to blob store (S3/GCS)
+  isSubmission      Boolean               @default(false)
+  submissionType    SubmissionType?
+  processingStatus  EmailProcessingStatus @default(pending)
+  errorMessage      String?               @db.Text
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  attachments      EmailAttachment[]
+  extractionResult ExtractionResult?
+
+  @@index([gmailMessageId])
+  @@index([threadId])
+  @@index([processingStatus])
+  @@index([isSubmission])
+  @@index([receivedAt])
+}
+
+model EmailAttachment {
+  id                   String       @id @default(cuid())
+  emailMessageId       String
+  emailMessage         EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+  filename             String
+  contentType          String
+  sizeBytes            Int
+  storageKey           String // Blob location (S3/GCS)
+  documentType         DocumentType @default(other)
+  parsedTextStorageKey String? // Full text extraction storage key
+  createdAt            DateTime     @default(now())
+
+  @@index([emailMessageId])
+  @@index([documentType])
+}
+
+model ExtractionResult {
+  id             String       @id @default(cuid())
+  emailMessageId String       @unique
+  emailMessage   EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+  data           Json // Full structured fields (submission metadata, locations, coverage, loss history)
+  qaFlags        Json? // Flags from orchestrator (warnings, confidence issues)
+  summaryText    String?      @db.Text // LLM-generated summary paragraph
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  fieldExtractions FieldExtraction[]
+
+  @@index([emailMessageId])
+}
+
+// Store individual field extractions with document chunks and highlights
+model FieldExtraction {
+  id                String            @id @default(cuid())
+  extractionResultId String
+  extractionResult  ExtractionResult  @relation(fields: [extractionResultId], references: [id], onDelete: Cascade)
+  fieldPath         String            // e.g., "submission.namedInsured", "locations[0].buildings[0].riskAddress"
+  fieldName         String            // e.g., "namedInsured", "riskAddress"
+  fieldValue        String?           @db.Text // Extracted value (null if not found)
+  source            String            // "email_body" | "acord" | "sov" | "loss_run" | "schedule" | "supplemental" | "other"
+  documentId        String?           // ID of the document this came from (if from attachment)
+  documentChunk     String?           @db.Text // The actual text chunk from the document
+  highlightedText   String?           @db.Text // The chunk with the extracted value highlighted (e.g., with <mark> tags)
+  chunkStartIndex   Int?              // Character index where chunk starts in original document
+  chunkEndIndex      Int?              // Character index where chunk ends in original document
+  confidence        Float?             // Confidence score (0-1) if available
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([extractionResultId])
+  @@index([fieldPath])
+  @@index([fieldName])
+  @@index([source])
+}

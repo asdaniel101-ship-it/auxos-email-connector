@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: auxo-api
+    env: node
+    rootDir: apps/api
+    buildCommand: cd ../.. && pnpm install && pnpm --filter api run build
+    startCommand: cd ../.. && pnpm --filter api run start:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+

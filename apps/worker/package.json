@@ -1,0 +1,27 @@
+{
+  "name": "worker",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "1.4.1",
+    "@temporalio/activity": "1.8.4",
+    "@temporalio/client": "1.8.4",
+    "@temporalio/worker": "1.8.4",
+    "@temporalio/workflow": "1.8.4",
+    "minio": "^8.0.6",
+    "openai": "^6.9.1",
+    "pdf-parse": "^2.3.0",
+    "temporalio": "^1.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.10",
+    "@types/pdf-parse": "^1.1.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}

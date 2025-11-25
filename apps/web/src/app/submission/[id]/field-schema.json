@@ -1,0 +1,83 @@
+{
+  "submission": {
+    "submissionId": null,
+    "carrierName": null,
+    "brokerName": null,
+    "brokerEmail": null,
+    "brokerPhone": null,
+    "namedInsured": null,
+    "mailingAddress": null,
+    "naicsCode": null,
+    "operationsDescription": null,
+    "submissionType": null,
+    "effectiveDate": null,
+    "expirationDate": null,
+    "priorCarrier": null,
+    "priorPolicyNumber": null
+  },
+  "locations": [
+    {
+      "locationNumber": null,
+      "buildings": [
+        {
+          "buildingNumber": null,
+          "buildingName": null,
+          "riskAddress": null,
+          "city": null,
+          "state": null,
+          "zipCode": null,
+          "buildingSqFt": null,
+          "numberOfStories": null,
+          "yearBuilt": null,
+          "yearRenovated": null,
+          "constructionType": null,
+          "roofType": null,
+          "roofYearUpdated": null,
+          "primaryOccupancy": null,
+          "occupancyPercentage": null,
+          "buildingUseHours": null,
+          "sprinklered": null,
+          "sprinklerType": null,
+          "sprinklerPercentage": null,
+          "fireAlarmType": null,
+          "burglarAlarmType": null,
+          "distanceToHydrantFeet": null,
+          "distanceToFireStationMiles": null,
+          "fireProtectionClass": null,
+          "neighbouringExposures": null,
+          "buildingLimit": null
+        }
+      ]
+    }
+  ],
+  "coverage": {
+    "policyType": null,
+    "causeOfLossForm": null,
+    "coinsurancePercent": null,
+    "valuationMethod": null,
+    "buildingLimit": null,
+    "businessPersonalPropertyLimit": null,
+    "businessIncomeLimit": null,
+    "deductibleAllPeril": null,
+    "windHailDeductible": null,
+    "floodCoverage": null,
+    "earthquakeCoverage": null,
+    "equipmentBreakdownCoverage": null,
+    "ordinanceOrLawCoverage": null,
+    "terrorismCoverage": null,
+    "blanketCoverageFlag": null,
+    "blanketDescription": null
+  },
+  "lossHistory": {
+    "lossHistoryPeriodYears": null,
+    "numberOfClaims": null,
+    "totalIncurredLoss": null,
+    "largestSingleLoss": null,
+    "anyOpenClaims": null,
+    "anyCatLosses": null,
+    "lossNarrativeSummary": null,
+    "paidLoss": null,
+    "outstandingReserve": null
+  }
+}
+

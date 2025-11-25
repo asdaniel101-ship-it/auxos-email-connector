@@ -1,0 +1,354 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../prisma.service';
+import { EmailListenerService } from './email-listener.service';
+import { SubmissionClassifierService } from './submission-classifier.service';
+import { DocumentClassifierService } from './document-classifier.service';
+import { FieldExtractionService } from './field-extraction.service';
+import { SubmissionQAService } from './submission-qa.service';
+import { ResponsePackagerService } from './response-packager.service';
+
+@Injectable()
+export class EmailIntakeService {
+  private readonly logger = new Logger(EmailIntakeService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private configService: ConfigService,
+    private emailListener: EmailListenerService,
+    private submissionClassifier: SubmissionClassifierService,
+    private documentClassifier: DocumentClassifierService,
+    private fieldExtraction: FieldExtractionService,
+    private qaService: SubmissionQAService,
+    private responsePackager: ResponsePackagerService,
+  ) {
+    // Inject DocumentParserService via fieldExtraction if needed
+  }
+
+  /**
+   * Main orchestration method: process a stored email by its gmailMessageId
+   * @param gmailMessageId - The Gmail message ID
+   * @param emailBody - Optional email body (if not provided, will try to load from storage)
+   */
+  async processEmail(gmailMessageId: string, emailBody?: string) {
+    this.logger.log(`Processing email: ${gmailMessageId}`);
+
+    try {
+      // 1. Get stored email data
+      const emailData = await this.prisma.emailMessage.findUnique({
+        where: { gmailMessageId },
+        include: {
+          attachments: true,
+        },
+      });
+
+      if (!emailData) {
+        throw new Error(`Email with ID ${gmailMessageId} not found`);
+      }
+
+      // 2. Check if email is from our own address to prevent infinite loops
+      const systemEmail = this.configService.get<string>('GMAIL_EMAIL') || 'auxoreachout@gmail.com';
+      if (emailData.from && emailData.from.toLowerCase().includes(systemEmail.toLowerCase())) {
+        this.logger.warn(`Skipping email ${gmailMessageId} - FROM our own address: ${emailData.from}`);
+        await this.prisma.emailMessage.update({
+          where: { gmailMessageId },
+          data: {
+            processingStatus: 'done',
+            errorMessage: 'Skipped: Email from system address (prevents infinite loop)',
+          },
+        });
+        return { processed: false, reason: 'from_system_address' };
+      }
+
+      // Mark as processing
+      await this.prisma.emailMessage.update({
+        where: { gmailMessageId },
+        data: { processingStatus: 'processing' },
+      });
+
+      // 3. Classify if it's a submission
+      // Use provided body or empty string (body is not stored in DB, only in parsed result)
+      const body = emailBody || '';
+
+      // Log detailed information for debugging differences between .eml uploads and IMAP emails
+      this.logger.log(`=== Email Processing Debug Info ===`);
+      this.logger.log(`GmailMessageId: ${gmailMessageId}`);
+      this.logger.log(`Subject: "${emailData.subject || '(empty)'}"`);
+      this.logger.log(`From: "${emailData.from || '(empty)'}"`);
+      this.logger.log(`Body length: ${body.length} chars`);
+      this.logger.log(`Body preview (first 200 chars): "${body.substring(0, 200)}"`);
+      this.logger.log(`Attachments count: ${emailData.attachments?.length || 0}`);
+      if (emailData.attachments && emailData.attachments.length > 0) {
+        emailData.attachments.forEach((att: any, idx: number) => {
+          this.logger.log(`  Attachment ${idx + 1}: filename="${att.filename || '(unnamed)'}", contentType="${att.contentType || '(unknown)'}", sizeBytes=${att.sizeBytes || 0}`);
+        });
+      }
+      this.logger.log(`====================================`);
+
+      const classification = await this.submissionClassifier.classify({
+        subject: emailData.subject,
+        body: body,
+        attachments: emailData.attachments,
+      });
+      
+      if (!classification.isSubmission) {
+        this.logger.log(`Email ${gmailMessageId} is not a submission, skipping extraction`);
+        this.logger.log(`Classification reason: ${classification.reason || 'unknown'}`);
+        this.logger.log(`Subject: ${emailData.subject}, Attachments: ${emailData.attachments?.length || 0}`);
+        
+        await this.prisma.emailMessage.update({
+          where: { gmailMessageId },
+          data: {
+            isSubmission: false,
+            submissionType: classification.submissionType || null,
+            processingStatus: 'done',
+            errorMessage: classification.reason || 'Not classified as submission',
+          },
+        });
+        return { processed: false, reason: 'not_a_submission', classificationReason: classification.reason };
+      }
+
+      // 4. Classify documents
+      const documentClassifications = await this.documentClassifier.classifyAll(
+        emailData.attachments,
+      );
+
+      // Update document types in database
+      for (const [attachmentId, docType] of documentClassifications.entries()) {
+        await this.prisma.emailAttachment.update({
+          where: { id: attachmentId },
+          data: { documentType: docType },
+        });
+      }
+
+      // 5. Extract fields using LLM (add body to emailData for extraction)
+      const emailDataWithBody = {
+        ...emailData,
+        body: body,
+      };
+      const extractionResult = await this.fieldExtraction.extract(emailDataWithBody, documentClassifications);
+
+      // 6. Run QA checks
+      const qaFlags = await this.qaService.runChecks(extractionResult.data);
+
+      // 7. Package response (summary, table, PDF, JSON)
+      const packagedResponse = await this.responsePackager.package(extractionResult, qaFlags);
+
+      // 8. Store extraction result and field extractions (use upsert for reprocessing)
+      const extractionResultRecord = await this.prisma.extractionResult.upsert({
+        where: {
+          emailMessageId: emailData.id,
+        },
+        update: {
+          data: extractionResult.data,
+          qaFlags: qaFlags,
+          summaryText: packagedResponse.summary,
+        },
+        create: {
+          emailMessageId: emailData.id,
+          data: extractionResult.data,
+          qaFlags: qaFlags,
+          summaryText: packagedResponse.summary,
+        },
+      });
+
+      // Delete existing field extractions before creating new ones (for reprocessing)
+      await this.prisma.fieldExtraction.deleteMany({
+        where: {
+          extractionResultId: extractionResultRecord.id,
+        },
+      });
+
+      // Store field extractions with document chunks
+      if (extractionResult.fieldExtractions && extractionResult.fieldExtractions.length > 0) {
+        await this.prisma.fieldExtraction.createMany({
+          data: extractionResult.fieldExtractions.map((fe: any) => ({
+            extractionResultId: extractionResultRecord.id,
+            fieldPath: fe.fieldPath,
+            fieldName: fe.fieldName,
+            fieldValue: fe.fieldValue ? String(fe.fieldValue) : null,
+            source: fe.source,
+            documentId: fe.documentId || null,
+            documentChunk: fe.documentChunk || null,
+            highlightedText: fe.highlightedText || null,
+            chunkStartIndex: fe.chunkStartIndex || null,
+            chunkEndIndex: fe.chunkEndIndex || null,
+            confidence: fe.confidence || null,
+          })),
+        });
+      }
+
+      // 8. Send reply email (pass email message ID and field extractions for hyperlinks)
+      await this.emailListener.sendReply(
+        emailData, 
+        packagedResponse,
+        extractionResult?.fieldExtractions || []
+      );
+
+      // 9. Mark as done
+      await this.prisma.emailMessage.update({
+        where: { gmailMessageId },
+        data: {
+          isSubmission: true,
+          submissionType: classification.submissionType || null,
+          processingStatus: 'done',
+        },
+      });
+
+      this.logger.log(`Successfully processed submission: ${gmailMessageId}`);
+      return { processed: true, emailMessageId: emailData.id };
+
+    } catch (error) {
+      this.logger.error(`Error processing email ${gmailMessageId}:`, error);
+      
+      await this.prisma.emailMessage.update({
+        where: { gmailMessageId },
+        data: {
+          processingStatus: 'error',
+          errorMessage: error instanceof Error ? error.message : String(error),
+        },
+      });
+
+      throw error;
+    }
+  }
+
+  /**
+   * Poll Gmail for new messages (called by cron job or scheduled task)
+   */
+  async pollForNewEmails() {
+    this.logger.log('Polling Gmail for new messages...');
+    
+    try {
+      const newUids = await this.emailListener.getNewMessages();
+      this.logger.log(`Found ${newUids.length} new messages`);
+
+      const results: Array<{
+        uid: number;
+        success: boolean;
+        result?: any;
+        error?: string;
+      }> = [];
+      for (const uid of newUids) {
+        const maxRetries = 3;
+        let lastError: Error | null = null;
+        let success = false;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            // Fetch and store email first
+            const emailData = await this.emailListener.fetchAndStoreEmail(uid);
+            // Then process it (pass body from parsed email)
+            const result = await this.processEmail(
+              emailData.gmailMessageId,
+              emailData.body || '',
+            );
+            results.push({ uid, success: true, result });
+            success = true;
+            break;
+          } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+            this.logger.warn(
+              `Failed to process message UID ${uid} (attempt ${attempt}/${maxRetries}):`,
+              lastError.message,
+            );
+
+            // Wait before retry (exponential backoff)
+            if (attempt < maxRetries) {
+              const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // Max 10 seconds
+              await new Promise((resolve) => setTimeout(resolve, delay));
+            }
+          }
+        }
+
+        if (!success && lastError) {
+          this.logger.error(`Failed to process message UID ${uid} after ${maxRetries} attempts:`, lastError);
+          results.push({
+            uid,
+            success: false,
+            error: lastError.message,
+          });
+        }
+      }
+
+      return { processed: newUids.length, results };
+    } catch (error) {
+      this.logger.error('Error polling Gmail:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all processed submissions for admin dashboard
+   */
+  async getAllSubmissions(limit = 50, offset = 0) {
+    return this.prisma.emailMessage.findMany({
+      where: { isSubmission: true },
+      include: {
+        attachments: true,
+        extractionResult: {
+          include: {
+            fieldExtractions: true,
+          },
+        },
+      },
+      orderBy: { receivedAt: 'desc' },
+      take: limit,
+      skip: offset,
+    });
+  }
+
+  /**
+   * Get a single submission by ID
+   */
+  async getSubmissionById(emailMessageId: string) {
+    return this.prisma.emailMessage.findUnique({
+      where: { id: emailMessageId },
+      include: {
+        attachments: true,
+        extractionResult: {
+          include: {
+            fieldExtractions: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Get all emails (including non-submissions) for debugging
+   */
+  async getAllEmails(limit = 100, offset = 0) {
+    return this.prisma.emailMessage.findMany({
+      include: {
+        attachments: true,
+        extractionResult: true,
+      },
+      orderBy: { receivedAt: 'desc' },
+      take: limit,
+      skip: offset,
+    });
+  }
+
+  /**
+   * Get recent emails (last 24 hours) for debugging
+   */
+  async getRecentEmails() {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    return this.prisma.emailMessage.findMany({
+      where: {
+        receivedAt: {
+          gte: yesterday,
+        },
+      },
+      include: {
+        attachments: true,
+        extractionResult: true,
+      },
+      orderBy: { receivedAt: 'desc' },
+    });
+  }
+}
+

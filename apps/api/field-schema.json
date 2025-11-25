@@ -1,0 +1,291 @@
+{
+  "submission": {
+    "submissionId": {
+      "type": "string",
+      "description": "Internal ID assigned to this email submission",
+      "whereToLook": "Generated"
+    },
+    "carrierName": {
+      "type": "string",
+      "description": "Name of the carrier receiving or sending the submission",
+      "whereToLook": "Email body, signature, ACORD header"
+    },
+    "brokerName": {
+      "type": "string",
+      "description": "Name of the submitting broker / producer",
+      "whereToLook": "Email signature, ACORD Producer section"
+    },
+    "brokerEmail": {
+      "type": "string",
+      "description": "Email of submitting broker",
+      "whereToLook": "Email headers"
+    },
+    "brokerPhone": {
+      "type": "string",
+      "description": "Broker phone number",
+      "whereToLook": "Signature, ACORD"
+    },
+    "namedInsured": {
+      "type": "string",
+      "description": "Legal name of the insured business",
+      "whereToLook": "ACORD 125/140, SOV header, email body"
+    },
+    "mailingAddress": {
+      "type": "string",
+      "description": "Insured's mailing address",
+      "whereToLook": "ACORD, email"
+    },
+    "naicsCode": {
+      "type": "string",
+      "description": "NAICS industry code",
+      "whereToLook": "ACORD, email narrative"
+    },
+    "operationsDescription": {
+      "type": "string",
+      "description": "Free-text description of operations",
+      "whereToLook": "Email body, ACORD remarks"
+    },
+    "submissionType": {
+      "type": "string",
+      "description": "New, renewal, endorsement, etc.",
+      "whereToLook": "Subject, body"
+    },
+    "effectiveDate": {
+      "type": "date",
+      "description": "Proposed policy effective date",
+      "whereToLook": "ACORD, email"
+    },
+    "expirationDate": {
+      "type": "date",
+      "description": "Proposed expiration date",
+      "whereToLook": "ACORD, email"
+    },
+    "priorCarrier": {
+      "type": "string",
+      "description": "Current or expiring carrier",
+      "whereToLook": "Email narrative, loss runs, ACORD"
+    },
+    "priorPolicyNumber": {
+      "type": "string",
+      "description": "Expiring policy number",
+      "whereToLook": "ACORD, loss runs"
+    }
+  },
+  "locations": {
+    "type": "array",
+    "description": "Array of location objects",
+    "items": {
+      "locationNumber": {
+        "type": "number",
+        "description": "Location index used by ACORD/SOV"
+      },
+      "buildings": {
+        "type": "array",
+        "description": "Array of building objects at this location",
+        "items": {
+          "buildingNumber": {
+            "type": "number",
+            "description": "Building number at a location"
+          },
+          "buildingName": {
+            "type": "string",
+            "description": "Optional building label"
+          },
+          "riskAddress": {
+            "type": "string",
+            "description": "Full address of the building"
+          },
+          "city": {
+            "type": "string",
+            "description": "City of building"
+          },
+          "state": {
+            "type": "string",
+            "description": "2-letter state"
+          },
+          "zipCode": {
+            "type": "string",
+            "description": "ZIP"
+          },
+          "buildingSqFt": {
+            "type": "number",
+            "description": "Total building square footage"
+          },
+          "numberOfStories": {
+            "type": "number",
+            "description": "Number of stories"
+          },
+          "yearBuilt": {
+            "type": "number",
+            "description": "Original year built"
+          },
+          "yearRenovated": {
+            "type": "number",
+            "description": "Major renovation year"
+          },
+          "constructionType": {
+            "type": "string",
+            "description": "ISO construction type"
+          },
+          "roofType": {
+            "type": "string",
+            "description": "Roof material/type"
+          },
+          "roofYearUpdated": {
+            "type": "number",
+            "description": "Year roof last updated"
+          },
+          "primaryOccupancy": {
+            "type": "string",
+            "description": "Main occupancy"
+          },
+          "occupancyPercentage": {
+            "type": "number",
+            "description": "Percent occupied"
+          },
+          "buildingUseHours": {
+            "type": "string",
+            "description": "Hours of operation"
+          },
+          "sprinklered": {
+            "type": "boolean",
+            "description": "Whether building has sprinklers"
+          },
+          "sprinklerType": {
+            "type": "string",
+            "description": "Type of sprinkler system"
+          },
+          "sprinklerPercentage": {
+            "type": "number",
+            "description": "% of building sprinklered"
+          },
+          "fireAlarmType": {
+            "type": "string",
+            "description": "Type of fire alarm"
+          },
+          "burglarAlarmType": {
+            "type": "string",
+            "description": "Burglary/security alarm type"
+          },
+          "distanceToHydrantFeet": {
+            "type": "number",
+            "description": "Distance to nearest fire hydrant (ft)"
+          },
+          "distanceToFireStationMiles": {
+            "type": "number",
+            "description": "Distance to fire station (miles)"
+          },
+          "fireProtectionClass": {
+            "type": "string",
+            "description": "ISO protection class"
+          },
+          "neighbouringExposures": {
+            "type": "string",
+            "description": "Description of adjacent exposures"
+          },
+          "buildingLimit": {
+            "type": "number",
+            "description": "Limit for building coverage"
+          }
+        }
+      }
+    }
+  },
+  "coverage": {
+    "policyType": {
+      "type": "string",
+      "description": "Type of policy"
+    },
+    "causeOfLossForm": {
+      "type": "string",
+      "description": "Basic / Broad / Special"
+    },
+    "coinsurancePercent": {
+      "type": "number",
+      "description": "Coinsurance percentage"
+    },
+    "valuationMethod": {
+      "type": "string",
+      "description": "Replacement cost vs ACV"
+    },
+    "buildingLimit": {
+      "type": "number",
+      "description": "Limit for building coverage"
+    },
+    "businessPersonalPropertyLimit": {
+      "type": "number",
+      "description": "BPP limit"
+    },
+    "businessIncomeLimit": {
+      "type": "number",
+      "description": "Business income / extra expense limit"
+    },
+    "deductibleAllPeril": {
+      "type": "number",
+      "description": "Base property deductible"
+    },
+    "windHailDeductible": {
+      "type": "string",
+      "description": "Wind/hail special deductible"
+    },
+    "floodCoverage": {
+      "type": "string",
+      "description": "Flood coverage presence and limit"
+    },
+    "earthquakeCoverage": {
+      "type": "string",
+      "description": "EQ coverage presence and limit"
+    },
+    "equipmentBreakdownCoverage": {
+      "type": "boolean",
+      "description": "Whether EB is included"
+    },
+    "ordinanceOrLawCoverage": {
+      "type": "boolean",
+      "description": "Ordinance or law coverage"
+    },
+    "terrorismCoverage": {
+      "type": "boolean",
+      "description": "TRIA election"
+    },
+    "blanketCoverageFlag": {
+      "type": "boolean",
+      "description": "Whether coverage is blanket"
+    },
+    "blanketDescription": {
+      "type": "string",
+      "description": "Description of blanket"
+    }
+  },
+  "lossHistory": {
+    "lossHistoryPeriodYears": {
+      "type": "number",
+      "description": "Number of prior years shown (e.g. 3 or 5)"
+    },
+    "numberOfClaims": {
+      "type": "number",
+      "description": "Total count of claims in period"
+    },
+    "totalIncurredLoss": {
+      "type": "number",
+      "description": "Sum of paid + outstanding reserves"
+    },
+    "largestSingleLoss": {
+      "type": "number",
+      "description": "Largest incurred amount for one claim"
+    },
+    "anyOpenClaims": {
+      "type": "boolean",
+      "description": "Whether there are open claims"
+    },
+    "anyCatLosses": {
+      "type": "boolean",
+      "description": "Whether any catastrophe losses"
+    },
+    "lossNarrativeSummary": {
+      "type": "string",
+      "description": "Text summary of loss profile"
+    }
+  }
+}
+
