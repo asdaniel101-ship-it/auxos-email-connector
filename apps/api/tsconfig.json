@@ -23,6 +23,10 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false
   },
+  "include": [
+    "src/**/*",
+    "vercel.ts"
+  ],
   "exclude": [
     "node_modules",
     "dist",
