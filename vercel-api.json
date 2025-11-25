@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "npm install && cd apps/api && npm install && npx prisma generate && npm run build",
-  "installCommand": "npm install",
+  "buildCommand": "pnpm install && pnpm --filter api build",
+  "installCommand": "pnpm install",
   "outputDirectory": "apps/api/dist",
   "framework": null,
   "functions": {

@@ -1,12 +1,15 @@
 // Vercel serverless function - NestJS adapter
-// Use CommonJS require for better compatibility
+// Standard ESM approach for Vercel
+import { NestFactory } from '@nestjs/core';
+import { ValidationPipe, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 
-const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const require = createRequire(import.meta.url);
 
 let cachedApp: any;
 
@@ -16,11 +19,7 @@ async function createApp() {
   }
 
   try {
-    const { NestFactory } = await import('@nestjs/core');
-    const { ValidationPipe, Logger } = await import('@nestjs/common');
-    const { ConfigService } = await import('@nestjs/config');
-
-    // Load built CommonJS modules
+    // Load built CommonJS modules using require (they're compiled to CommonJS)
     const appModulePath = require.resolve('../apps/api/dist/src/app.module.js');
     const interceptorPath = require.resolve('../apps/api/dist/src/common/interceptors/logging.interceptor.js');
     
