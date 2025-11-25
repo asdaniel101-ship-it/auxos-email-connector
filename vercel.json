@@ -1,6 +1,6 @@
 {
-  "buildCommand": "pnpm install && pnpm --filter web run build && pnpm --filter api run build",
-  "installCommand": "pnpm install",
+  "buildCommand": "pnpm install --no-frozen-lockfile && pnpm --filter web run build && pnpm --filter api run build",
+  "installCommand": "pnpm install --no-frozen-lockfile",
   "outputDirectory": "apps/web/.next",
   "framework": "nextjs",
   "routes": [
