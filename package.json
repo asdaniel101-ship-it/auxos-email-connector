@@ -32,6 +32,17 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "imap-simple": "^5.1.0",
+    "mailparser": "^3.9.0",
+    "nodemailer": "^7.0.10",
+    "openai": "^6.9.1",
+    "minio": "^8.0.6",
+    "multer": "^2.0.2",
+    "pdf-parse": "^2.3.0",
+    "xlsx": "^0.18.5",
+    "mammoth": "^1.11.0",
+    "pdfkit": "^0.17.2",
+    "dotenv": "^17.2.3"
   }
 }
