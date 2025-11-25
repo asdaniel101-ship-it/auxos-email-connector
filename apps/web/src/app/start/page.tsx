@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -20,7 +20,7 @@ const COVERAGE_OPTIONS = [
   { id: 'BUILD', name: 'Builders Risk', description: 'Covers construction projects' },
 ];
 
-export default function StartPage() {
+function StartPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const vertical = searchParams.get('vertical') || 'insurance';
@@ -237,7 +237,7 @@ export default function StartPage() {
       console.error('Error creating session:', error);
       let errorMessage = 'Failed to start. Please try again.';
       
-      if (error?.message) {
+      if (error instanceof Error && error.message) {
         errorMessage = error.message;
       } else if (error instanceof TypeError && error.message.includes('fetch')) {
         errorMessage = 'Unable to connect to server. Please check your internet connection and try again.';
@@ -588,5 +588,20 @@ export default function StartPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function StartPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-slate-200 border-t-slate-900 mb-4"></div>
+          <p className="text-slate-600 font-medium">Loading...</p>
+        </div>
+      </div>
+    }>
+      <StartPageContent />
+    </Suspense>
   );
 }

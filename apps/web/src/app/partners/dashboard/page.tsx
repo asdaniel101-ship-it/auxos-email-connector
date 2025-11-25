@@ -296,8 +296,7 @@ export default function PartnersDashboard() {
                           {(() => {
                             const isInsurance = lead.session.vertical === 'insurance';
                             const isActivelyLooking = lead.activelyLookingForInsurance === true || 
-                                                      lead.activelyLookingForInsurance === 1 || 
-                                                      lead.activelyLookingForInsurance === 'true';
+                                                      String(lead.activelyLookingForInsurance) === 'true';
                             
                             if (isInsurance && isActivelyLooking) {
                               return (
@@ -343,7 +342,7 @@ export default function PartnersDashboard() {
                                           ) : Array.isArray(field.value) ? (
                                             <span>{field.value.join(', ')}</span>
                                           ) : (
-                                            <span>{field.value || 'N/A'}</span>
+                                            <span>{field.value ? String(field.value) : 'N/A'}</span>
                                           )}
                                         </div>
                                       </div>

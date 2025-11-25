@@ -38,10 +38,10 @@ function DebugEmailsPageContent() {
   const [polling, setPolling] = useState(false);
   const [imapStatus, setImapStatus] = useState<{
     success: boolean;
-    email: string;
-    totalEmails: number;
-    unreadCount: number;
-    emails: Array<{
+    email?: string;
+    totalEmails?: number;
+    unreadCount?: number;
+    emails?: Array<{
       uid: number;
       date: string | null;
       isUnread: boolean;

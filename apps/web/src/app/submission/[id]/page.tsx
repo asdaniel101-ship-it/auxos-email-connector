@@ -198,8 +198,8 @@ function SubmissionReviewerContent() {
             });
           }
         });
-      } else if (typeof value === 'object') {
-        fields.push(...flattenData(value, currentPath, currentPath));
+      } else if (typeof value === 'object' && value !== null) {
+        fields.push(...flattenData(value as Record<string, unknown>, currentPath, currentPath));
       } else {
         fields.push({ 
           path: currentPath, 
@@ -244,7 +244,8 @@ function SubmissionReviewerContent() {
           }
         } else {
           if (current && typeof current === 'object' && current !== null && part in current) {
-            current = (current as Record<string, unknown>)[part];
+            const currentObj = current as Record<string, unknown>;
+            current = currentObj[part] as unknown;
           } else {
             return undefined;
           }
@@ -270,7 +271,7 @@ function SubmissionReviewerContent() {
     // Process locations and buildings
     if (expectedFieldsSchema.locations && expectedFieldsSchema.locations[0]) {
       const locationTemplate = expectedFieldsSchema.locations[0];
-      const extractedLocations = extractedData?.locations || [];
+      const extractedLocations = (Array.isArray(extractedData?.locations) ? extractedData.locations : []) as Array<Record<string, unknown>>;
       
       // Always show at least one location
       const maxLocations = Math.max(1, extractedLocations.length);

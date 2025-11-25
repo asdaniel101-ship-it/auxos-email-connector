@@ -87,7 +87,7 @@ export default function ReviewPage() {
       setLead(leadData);
       // Initialize editData with lead's current values and extracted field values
       const initialEditData: Record<string, unknown> = { ...leadData };
-      leadData.extractedFields?.forEach(field => {
+      leadData.extractedFields?.forEach((field: { id: string; fieldValue: unknown }) => {
         initialEditData[`extracted_${field.id}`] = field.fieldValue;
       });
       setEditData(initialEditData);
@@ -261,9 +261,11 @@ export default function ReviewPage() {
 
   const getFieldValue = (fieldName: string): string => {
     if (isEditing) {
-      return editData[fieldName] ?? '';
+      const value = editData[fieldName];
+      return value !== null && value !== undefined ? String(value) : '';
     }
-    return lead?.[fieldName as keyof Lead] as string ?? '';
+    const value = lead?.[fieldName as keyof Lead];
+    return value !== null && value !== undefined ? String(value) : '';
   };
 
   const getFieldValueNumber = (fieldName: string): string => {
@@ -276,10 +278,11 @@ export default function ReviewPage() {
 
   const getFieldValueArray = (fieldName: string): string[] => {
     if (isEditing) {
-      return Array.isArray(editData[fieldName]) ? editData[fieldName] : [];
+      const value = editData[fieldName];
+      return Array.isArray(value) && value.every((item): item is string => typeof item === 'string') ? value : [];
     }
     const value = lead?.[fieldName as keyof Lead];
-    return Array.isArray(value) ? value : [];
+    return Array.isArray(value) && value.every((item): item is string => typeof item === 'string') ? value : [];
   };
 
   const getExtractedFieldValue = (fieldName: string): ExtractedField | null => {
@@ -528,7 +531,7 @@ export default function ReviewPage() {
                             {isEditing ? (
                               <input
                                 type="text"
-                                value={editData[`extracted_${extracted.id}`] ?? extracted.fieldValue}
+                                value={editData[`extracted_${extracted.id}`] ? String(editData[`extracted_${extracted.id}`]) : extracted.fieldValue}
                                 onChange={(e) => setEditData({ ...editData, [`extracted_${extracted.id}`]: e.target.value })}
                                 className="w-full mt-2 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                               />
@@ -566,7 +569,7 @@ export default function ReviewPage() {
                 <button
                   onClick={() => {
                     setIsEditing(false);
-                    setEditData(lead);
+                    setEditData({ ...lead } as Record<string, unknown>);
                   }}
                   className="px-5 py-2.5 border border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-white transition-colors text-sm"
                 >

@@ -34,6 +34,7 @@ interface EmailMessage {
       source: string;
       documentChunk: string | null;
       highlightedText: string | null;
+      confidence: number | null;
     }>;
   } | null;
 }
@@ -46,6 +47,7 @@ interface FieldExtraction {
   source: string;
   documentChunk: string | null;
   highlightedText: string | null;
+  confidence: number | null;
 }
 
 function DashboardPageContent() {
@@ -216,7 +218,8 @@ function DashboardPageContent() {
           }
         } else {
           if (current && typeof current === 'object' && current !== null && part in current) {
-            current = (current as Record<string, unknown>)[part];
+            const currentObj = current as Record<string, unknown>;
+            current = currentObj[part] as unknown;
           } else {
             return undefined;
           }
