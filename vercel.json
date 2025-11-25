@@ -1,0 +1,8 @@
+{
+  "buildCommand": "cd apps/api && pnpm run build",
+  "outputDirectory": "apps/api/dist",
+  "installCommand": "pnpm install",
+  "framework": null,
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- apps/api"
+}
+
