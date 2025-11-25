@@ -1,5 +1,79 @@
-// Vercel serverless function - lazy load NestJS to avoid build-time dependencies
+// Vercel serverless function - NestJS adapter
+// Import from source files (Vercel will compile these)
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from '../apps/api/src/app.module';
+import { ValidationPipe, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { LoggingInterceptor } from '../apps/api/src/common/interceptors/logging.interceptor';
+
+let cachedApp: any;
+
+async function createApp() {
+  if (cachedApp) {
+    return cachedApp;
+  }
+
+  // NestJS uses Express by default, so we can create the app normally
+  const app = await NestFactory.create(AppModule);
+  
+  const configService = app.get(ConfigService);
+
+  // Configure CORS - allow production frontend URL
+  const frontendUrl = configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    frontendUrl,
+  ].filter(Boolean);
+
+  app.enableCors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type,Authorization,X-API-Key',
+  });
+
+  // Add global logging interceptor
+  app.useGlobalInterceptors(new LoggingInterceptor());
+
+  // Validate incoming DTOs automatically
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
+
+  await app.init();
+  
+  // Get the underlying Express instance from NestJS
+  cachedApp = app.getHttpAdapter().getInstance();
+  
+  Logger.log('Vercel serverless app initialized', 'Bootstrap');
+  return cachedApp;
+}
+
 export default async function handler(req: any, res: any) {
-  const { default: nestHandler } = await import('../apps/api/vercel');
-  return nestHandler(req, res);
+  try {
+    const app = await createApp();
+    
+    // Strip /api prefix from the URL path for NestJS routing
+    // Vercel routes /api/* to this handler, but NestJS expects paths without /api
+    if (req.url && req.url.startsWith('/api/')) {
+      req.url = req.url.replace('/api', '');
+      // Also update the originalUrl if it exists
+      if (req.originalUrl && req.originalUrl.startsWith('/api/')) {
+        req.originalUrl = req.originalUrl.replace('/api', '');
+      }
+    }
+    
+    return app(req, res);
+  } catch (error) {
+    console.error('Vercel handler error:', error);
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      message: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
 }
