@@ -11,35 +11,44 @@ async function createApp() {
   }
 
   try {
-    // Try to load the CommonJS module using require
-    // In ESM, we can use createRequire or dynamic import with interop
+    // Try to load CommonJS modules - use dynamic import which should handle both
     let AppModule: any;
     let LoggingInterceptor: any;
     
     try {
-      // First try: use createRequire for CommonJS modules
-      const { createRequire } = await import('module');
-      const require = createRequire(import.meta.url);
-      const appModulePath = require.resolve('../apps/api/dist/src/app.module.js');
-      const interceptorPath = require.resolve('../apps/api/dist/src/common/interceptors/logging.interceptor.js');
-      
-      const appModule = require(appModulePath);
-      const interceptorModule = require(interceptorPath);
-      
-      AppModule = appModule.AppModule || appModule.default?.AppModule || appModule.default;
-      LoggingInterceptor = interceptorModule.LoggingInterceptor || interceptorModule.default?.LoggingInterceptor || interceptorModule.default;
-    } catch (requireError) {
-      // Fallback: try dynamic import
-      console.log('createRequire failed, trying dynamic import:', requireError);
+      // Dynamic import should work for both ESM and CommonJS with interop
       const appModule = await import('../apps/api/dist/src/app.module.js');
       const interceptorModule = await import('../apps/api/dist/src/common/interceptors/logging.interceptor.js');
       
+      // Handle CommonJS exports (exports.AppModule) or ESM default exports
       AppModule = appModule.AppModule || appModule.default?.AppModule || appModule.default;
       LoggingInterceptor = interceptorModule.LoggingInterceptor || interceptorModule.default?.LoggingInterceptor || interceptorModule.default;
+      
+      console.log('Loaded AppModule:', AppModule ? 'Success' : 'Failed');
+      console.log('AppModule exports:', Object.keys(appModule));
+    } catch (importError) {
+      console.error('Import failed:', importError);
+      // Try with createRequire as fallback
+      try {
+        const { createRequire } = await import('module');
+        // @ts-ignore - import.meta.url might not be available
+        const require = createRequire(typeof import.meta !== 'undefined' ? import.meta.url : __filename);
+        const appModulePath = require.resolve('../apps/api/dist/src/app.module.js');
+        const interceptorPath = require.resolve('../apps/api/dist/src/common/interceptors/logging.interceptor.js');
+        
+        const appModule = require(appModulePath);
+        const interceptorModule = require(interceptorPath);
+        
+        AppModule = appModule.AppModule || appModule.default;
+        LoggingInterceptor = interceptorModule.LoggingInterceptor || interceptorModule.default;
+      } catch (requireError) {
+        console.error('Require also failed:', requireError);
+        throw new Error(`Failed to load AppModule: ${importError instanceof Error ? importError.message : String(importError)}`);
+      }
     }
 
     if (!AppModule) {
-      throw new Error(`Could not find AppModule. Tried both require and import.`);
+      throw new Error('AppModule is undefined after loading');
     }
 
     // NestJS uses Express by default, so we can create the app normally
@@ -88,7 +97,7 @@ async function createApp() {
     const errorStack = error instanceof Error ? error.stack : '';
     console.error('Failed to create app:', errorMsg);
     console.error('Stack:', errorStack);
-    console.error('Full error:', error);
+    console.error('Full error object:', error);
     throw error;
   }
 }
@@ -116,7 +125,7 @@ export default async function handler(req: any, res: any) {
     res.status(500).json({ 
       error: 'Internal server error', 
       message: errorMessage,
-      details: process.env.NODE_ENV === 'development' ? errorStack : undefined
+      details: errorStack
     });
   }
 }
