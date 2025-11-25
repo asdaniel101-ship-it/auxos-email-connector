@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "pnpm install && cd apps/api && pnpm prisma generate && pnpm build",
-  "installCommand": "pnpm install",
+  "buildCommand": "pnpm install --no-frozen-lockfile && cd apps/api && pnpm prisma generate && pnpm build",
+  "installCommand": "pnpm install --no-frozen-lockfile",
   "outputDirectory": "apps/api/dist",
   "framework": null,
   "functions": {
