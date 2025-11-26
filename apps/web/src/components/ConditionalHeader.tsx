@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import AuxoLogo from './AuxoLogo';
+import AuxosLogo from './AuxosLogo';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 
 export default function ConditionalHeader() {
@@ -13,7 +13,7 @@ export default function ConditionalHeader() {
     <header className="bg-white border-b border-slate-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <Link href="/" className="flex items-center gap-3">
-          <AuxoLogo />
+          <AuxosLogo />
           <div>
             <span className="block text-sm text-slate-500">
               Process insurance submissions faster.

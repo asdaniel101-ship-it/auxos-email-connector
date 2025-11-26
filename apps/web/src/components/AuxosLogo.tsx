@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import { useState } from 'react';
 
-export default function AuxoLogo() {
+export default function AuxosLogo() {
   const [logoError, setLogoError] = useState(false);
 
   if (logoError) {
@@ -14,8 +14,8 @@ export default function AuxoLogo() {
   return (
     <div className="relative h-10 flex-shrink-0">
       <Image
-        src="/images/auxo-logo.png"
-        alt="Auxo"
+        src="/images/auxos-logo.png"
+        alt="Auxos"
         width={150}
         height={50}
         className="h-10 w-auto object-contain"
