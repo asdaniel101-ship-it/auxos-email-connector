@@ -1259,7 +1259,7 @@ The Auxo processor
     
     <div class="footer">
       <p><strong>Thanks,</strong></p>
-      <p>The Auxo processor</p>
+      <p>The Auxos processor</p>
     </div>
   </div>
 </body>
