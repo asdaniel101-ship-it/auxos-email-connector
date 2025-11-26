@@ -61,10 +61,13 @@ export class HealthController {
 
   @Get('live')
   @Public()
+  @SkipThrottle()
   @ApiOperation({ summary: 'Liveness check endpoint' })
   @ApiResponse({ status: 200, description: 'Service is alive' })
   live() {
-    return { status: 'alive' };
+    // Simple, fast response for Railway health checks
+    // No database queries, no async operations
+    return { status: 'alive', timestamp: new Date().toISOString() };
   }
 }
 

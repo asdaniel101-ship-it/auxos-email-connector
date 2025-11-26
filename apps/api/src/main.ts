@@ -7,21 +7,39 @@ import { validateEnv } from './config/env.validation';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
+  
+  // Log startup info
+  logger.log(`Starting API server...`);
+  logger.log(`NODE_ENV: ${process.env.NODE_ENV}`);
+  logger.log(`PORT: ${process.env.PORT || '4000 (default)'}`);
+  
   // Validate environment variables
   try {
     validateEnv(process.env);
-    Logger.log('Environment variables validated', 'Bootstrap');
+    logger.log('Environment variables validated', 'Bootstrap');
   } catch (error) {
-    Logger.error(`Environment validation failed: ${error.message}`, 'Bootstrap');
-    // In production, you might want to exit here
-    // process.exit(1);
+    logger.error(`Environment validation failed: ${error.message}`, 'Bootstrap');
+    logger.error(`Missing or invalid environment variables. Check Railway environment variables.`);
+    // In production, exit on validation failure
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1);
+    }
   }
 
-  const app = await NestFactory.create(AppModule);
+  let app;
+  try {
+    app = await NestFactory.create(AppModule);
+    logger.log('App module created successfully');
+  } catch (error) {
+    logger.error(`Failed to create app: ${error.message}`, error.stack, 'Bootstrap');
+    process.exit(1);
+  }
+  
   const configService = app.get(ConfigService);
 
   // Configure CORS - allow production frontend URL and Vercel domains
-  const frontendUrl = configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+  const frontendUrl = configService.get('FRONTEND_URL') || 'http://localhost:3000';
   
   app.enableCors({
     origin: (origin, callback) => {
@@ -34,15 +52,17 @@ async function bootstrap() {
         'http://localhost:3000',
         'http://127.0.0.1:3000',
         frontendUrl,
-      ];
+      ].filter(Boolean);
       
       // Allow all Vercel domains (production and preview)
       const isVercelDomain = /^https:\/\/.*\.vercel\.app$/.test(origin);
       
       if (allowedOrigins.includes(origin) || isVercelDomain) {
+        Logger.log(`CORS: Allowing origin: ${origin}`, 'CORS');
         callback(null, true);
       } else {
-        callback(new Error('Not allowed by CORS'));
+        Logger.warn(`CORS: Blocked origin: ${origin}. Allowed: ${allowedOrigins.join(', ')}, Vercel domains`, 'CORS');
+        callback(new Error(`Not allowed by CORS: ${origin}`));
       }
     },
     credentials: true,
@@ -72,11 +92,45 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   // Choose the port (default 4000) and listen on all interfaces
+  // Railway automatically sets PORT environment variable
   const port = Number(process.env.PORT ?? 4000);
-  await app.listen(port, '0.0.0.0');
-
-  // Print the actual URL so you know what to curl
-  console.log(`🚀 API running at ${await app.getUrl()}`);
+  
+  // Log port info for debugging
+  logger.log(`Attempting to listen on port: ${port}`);
+  logger.log(`PORT env var: ${process.env.PORT || 'not set (using default 4000)'}`);
+  
+  try {
+    // Listen on all interfaces (0.0.0.0) so Railway can reach it
+    // Use app.listen() to ensure NestJS is fully initialized
+    await app.listen(port, '0.0.0.0');
+    
+    // Get the HTTP server instance to verify listening address
+    const server = app.getHttpServer();
+    const address = server.address();
+    
+    // Log the actual listening address
+    logger.log(`📡 Server listening on: ${JSON.stringify(address)}`);
+    
+    // Verify it's listening on 0.0.0.0
+    if (address && typeof address === 'object') {
+      if (address.address === '0.0.0.0' || address.address === '::') {
+        logger.log(`✅ Server is listening on 0.0.0.0:${port} - Railway can reach it`);
+      } else {
+        logger.warn(`⚠️  WARNING: Server address is ${address.address}, expected 0.0.0.0`);
+        logger.warn(`⚠️  This may cause Railway health checks to fail`);
+      }
+    }
+    
+    logger.log(`🚀 API is ready and listening on port ${port}`);
+    logger.log(`✅ Health check endpoint available at: http://0.0.0.0:${port}/health/live`);
+    logger.log(`✅ All routes initialized and ready to accept requests`);
+  } catch (error) {
+    logger.error(`Failed to start server on port ${port}: ${error.message}`, error.stack, 'Bootstrap');
+    process.exit(1);
+  }
 }
 
-bootstrap();
+bootstrap().catch((error) => {
+  console.error('Fatal error during bootstrap:', error);
+  process.exit(1);
+});
