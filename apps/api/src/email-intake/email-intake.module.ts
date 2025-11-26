@@ -13,9 +13,10 @@ import { DocumentParserService } from './document-parser.service';
 import { PrismaModule } from '../prisma.module';
 import { EmailModule } from '../email/email.module';
 import { FilesModule } from '../files/files.module';
+import { FieldSchemaModule } from '../field-schema/field-schema.module';
 
 @Module({
-  imports: [ScheduleModule.forRoot(), PrismaModule, EmailModule, FilesModule],
+  imports: [ScheduleModule.forRoot(), PrismaModule, EmailModule, FilesModule, FieldSchemaModule],
   providers: [
     EmailIntakeService,
     EmailListenerService,

@@ -21,6 +21,20 @@ export class FieldSchemaController {
     }
   }
 
+  @Get('expected')
+  @ApiOperation({ summary: 'Get the expected schema format for rendering' })
+  @ApiResponse({ status: 200, description: 'Returns the expected schema format used by frontend and email reply' })
+  async getExpectedSchema() {
+    try {
+      return await this.fieldSchemaService.getExpectedSchema();
+    } catch (error) {
+      throw new HttpException(
+        `Failed to load expected schema: ${error instanceof Error ? error.message : String(error)}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Put()
   @ApiOperation({ summary: 'Update the field schema' })
   @ApiResponse({ status: 200, description: 'Schema updated successfully' })

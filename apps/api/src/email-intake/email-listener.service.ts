@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma.service';
 import { MinioService } from '../files/minio.service';
+import { FieldSchemaService } from '../field-schema/field-schema.service';
 import imaps from 'imap-simple';
 import { simpleParser, ParsedMail } from 'mailparser';
 import * as nodemailer from 'nodemailer';
@@ -18,6 +19,7 @@ export class EmailListenerService {
     private prisma: PrismaService,
     private configService: ConfigService,
     private minioService: MinioService,
+    private fieldSchemaService: FieldSchemaService,
   ) {
     this.email = this.configService.get<string>('GMAIL_EMAIL') || 'auxoreachout@gmail.com';
     this.password = (this.configService.get<string>('GMAIL_APP_PASSWORD') || 'xgpk xygb ctov epfx').replace(/\s/g, '');
@@ -963,12 +965,13 @@ export class EmailListenerService {
       }
 
       // Build mail options with proper reply headers
+      const htmlContent = await this.buildReplyHtml(packagedResponse, emailData.id, fieldExtractions);
       const mailOptions: nodemailer.SendMailOptions = {
         from: this.email,
         to: filteredRecipients, // Send to all recipients (Reply-All behavior)
         subject,
         text: this.buildReplyText(packagedResponse),
-        html: this.buildReplyHtml(packagedResponse, emailData.id, fieldExtractions),
+        html: htmlContent,
         attachments: [
           {
             filename: `Submission_${emailData.id}.json`,
@@ -1034,13 +1037,13 @@ The Auxo processor
   /**
    * Build HTML reply with modern, scannable design
    */
-  private buildReplyHtml(packagedResponse: any, emailMessageId: string, fieldExtractions: any[] = []): string {
+  private async buildReplyHtml(packagedResponse: any, emailMessageId: string, fieldExtractions: any[] = []): Promise<string> {
     // Get frontend URL from config or use default
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
     
     // Use JSON data if available for better structure, otherwise parse the text table
     const htmlTable = packagedResponse.json 
-      ? this.convertJsonToHtml(packagedResponse.json, emailMessageId, fieldExtractions, frontendUrl)
+      ? await this.convertJsonToHtml(packagedResponse.json, emailMessageId, fieldExtractions, frontendUrl)
       : this.convertTableToHtml(packagedResponse.table);
     
     return `
@@ -1064,7 +1067,7 @@ The Auxo processor
       background-color: #ffffff;
       border-radius: 8px;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-      overflow: hidden;
+      overflow: visible;
     }
     .email-header {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -1141,6 +1144,11 @@ The Auxo processor
     .details-table td {
       padding: 12px 16px;
       font-size: 14px;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      white-space: normal;
+      text-overflow: clip;
+      overflow: visible;
     }
     .details-table td:first-child {
       font-weight: 600;
@@ -1227,6 +1235,16 @@ The Auxo processor
     .footer p {
       margin: 4px 0;
     }
+    .note-box {
+      background-color: #fef3c7;
+      border-left: 4px solid #f59e0b;
+      padding: 10px 14px;
+      margin: 16px 0;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #92400e;
+      line-height: 1.5;
+    }
   </style>
 </head>
 <body>
@@ -1245,6 +1263,10 @@ The Auxo processor
       <div class="summary-card">
         <h2>Summary</h2>
         <p>${this.escapeHtml(packagedResponse.summary)}</p>
+      </div>
+
+      <div class="note-box">
+        Click on any extracted field to see the source submission document
       </div>
 
       ${htmlTable}
@@ -1268,88 +1290,708 @@ The Auxo processor
   }
 
   /**
-   * Convert JSON data directly to formatted HTML (preferred method)
+   * Get expected fields schema from field-schema.json (source of truth)
+   * Same as used in submission details page
    */
-  private convertJsonToHtml(data: any, emailMessageId: string, fieldExtractions: any[] = [], frontendUrl: string = 'http://localhost:3000'): string {
-    if (!data) return '';
-    
+  private async getExpectedFieldsSchema(): Promise<Record<string, unknown>> {
+    return await this.fieldSchemaService.getExpectedSchema();
+  }
+
+  /**
+   * Format value the same way as submission details page
+   */
+  private formatValueForEmail(value: unknown): string {
+    if (value === null || value === undefined || value === '') {
+      return 'N/A';
+    }
+    if (typeof value === 'number') {
+      return value.toLocaleString();
+    }
+    if (typeof value === 'boolean') {
+      return value ? 'Yes' : 'No';
+    }
+    return String(value);
+  }
+
+  /**
+   * Convert camelCase to Title Case (same as submission details page)
+   */
+  private formatFieldName(key: string): string {
+    return key
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, (str: string) => str.toUpperCase())
+      .trim();
+  }
+
+  /**
+   * Render a section using schema-driven approach (same as submission details page)
+   */
+  private renderSectionForEmail(
+    sectionName: string,
+    sectionData: unknown,
+    fieldExtractions: any[],
+    prefix: string,
+    emailMessageId: string,
+    frontendUrl: string,
+    expectedFieldsSchema: Record<string, unknown>
+  ): string {
+    // Normalize section name: remove spaces and convert to camelCase for lookup
+    // e.g., "Loss History" -> "lossHistory", "Submission" -> "submission"
+    const normalizedSectionName = sectionName.replace(/\s+/g, '').replace(/^./, (str) => str.toLowerCase());
+    const schemaSection = expectedFieldsSchema[normalizedSectionName] || expectedFieldsSchema[sectionName.toLowerCase()];
+    if (!schemaSection) {
+      return '';
+    }
+
+    let html = '';
+    const dataObj = (sectionData && typeof sectionData === 'object' && !Array.isArray(sectionData))
+      ? sectionData as Record<string, unknown>
+      : {};
+
+    if (Array.isArray(schemaSection)) {
+      // Handle array sections (like locations)
+      const dataArray = Array.isArray(sectionData) ? sectionData : [];
+      const schemaItem = schemaSection[0] as Record<string, unknown>;
+      
+      // If no items, show a message
+      if (dataArray.length === 0) {
+        html += '<div style="padding: 12px; color: #6b7280; font-style: italic;">No data available</div>';
+        return html;
+      }
+      
+      // Render each location/item
+      dataArray.forEach((item: unknown, index: number) => {
+        if (item && typeof item === 'object' && !Array.isArray(item)) {
+          const itemData = item as Record<string, unknown>;
+          
+          // Wrap location in location-group div (for locations section)
+          if (sectionName.toLowerCase() === 'locations' || prefix === 'locations') {
+            html += '<div class="location-group">';
+            html += `<div class="location-title">Location ${itemData.locationNumber || 'N/A'}</div>`;
+          }
+          
+          // Render all fields from schema
+          Object.entries(schemaItem).forEach(([key, _schemaValue]) => {
+            // Skip locationNumber if it's already shown in the title
+            if ((sectionName.toLowerCase() === 'locations' || prefix === 'locations') && key === 'locationNumber') {
+              return;
+            }
+            
+            const value = itemData[key] !== undefined ? itemData[key] : null;
+            const fieldPath = prefix ? `${prefix}[${index}].${key}` : `${index}.${key}`;
+            const fieldName = this.formatFieldName(key);
+            
+            // Handle nested arrays (like buildings)
+            if (key === 'buildings' && Array.isArray(schemaItem[key])) {
+              const buildingsData = Array.isArray(value) ? value : [];
+              const buildingSchema = (schemaItem[key] as unknown[])[0] as Record<string, unknown>;
+              
+              buildingsData.forEach((building: unknown, buildingIndex: number) => {
+                if (building && typeof building === 'object' && !Array.isArray(building)) {
+                  const buildingData = building as Record<string, unknown>;
+                  
+                  // Start building group
+                  html += '<div class="building-group">';
+                  html += `<div class="building-title">Building ${buildingData.buildingNumber || 'N/A'}${buildingData.buildingName ? ` - ${buildingData.buildingName}` : ''}</div>`;
+                  
+                  // Collect all building fields
+                  const buildingFields: Array<{ key: string; value: unknown; path: string }> = [];
+                  Object.entries(buildingSchema).forEach(([buildingKey, _buildingSchemaValue]) => {
+                    const buildingValue = buildingData[buildingKey] !== undefined ? buildingData[buildingKey] : null;
+                    const buildingFieldPath = prefix ? `${prefix}[${index}].buildings[${buildingIndex}].${buildingKey}` : `${index}.buildings[${buildingIndex}].${buildingKey}`;
+                    const buildingFieldName = this.formatFieldName(buildingKey);
+                    buildingFields.push({ key: buildingFieldName, value: buildingValue, path: buildingFieldPath });
+                  });
+                  
+                  // Sort: extracted fields first
+                  buildingFields.sort((a, b) => {
+                    const aExtracted = this.isFieldExtracted(a.path, fieldExtractions).isExtracted;
+                    const bExtracted = this.isFieldExtracted(b.path, fieldExtractions).isExtracted;
+                    if (aExtracted && !bExtracted) return -1;
+                    if (!aExtracted && bExtracted) return 1;
+                    return 0;
+                  });
+                  
+                  // Render building fields
+                  buildingFields.forEach(field => {
+                    html += this.renderKeyValue(field.key, field.value, true, field.path, emailMessageId, fieldExtractions, frontendUrl);
+                  });
+                  
+                  html += '</div>';
+                }
+              });
+            } else {
+              // Regular location field
+              html += this.renderKeyValue(fieldName, value, true, fieldPath, emailMessageId, fieldExtractions, frontendUrl);
+            }
+          });
+          
+          // Close location-group div
+          if (sectionName.toLowerCase() === 'locations' || prefix === 'locations') {
+            html += '</div>';
+          }
+        }
+      });
+    } else if (schemaSection && typeof schemaSection === 'object' && !Array.isArray(schemaSection)) {
+      // Handle object sections (like submission, coverage, lossHistory)
+      const schemaObj = schemaSection as Record<string, unknown>;
+      
+      // Special handling for lossHistory: normalize priorLosses or losses array to aggregate fields (if present)
+      let normalizedDataObj = dataObj;
+      if ((sectionName.toLowerCase() === 'losshistory' || prefix === 'lossHistory')) {
+        if ((dataObj.priorLosses && Array.isArray(dataObj.priorLosses)) || 
+            (dataObj.losses && Array.isArray(dataObj.losses))) {
+          normalizedDataObj = this.normalizeLossHistoryFromPriorLosses(dataObj);
+        }
+      }
+      
+      // Merge schema fields with actual data fields, intelligently matching names
+      const mergedFields = this.mergeFieldsWithData(schemaObj, normalizedDataObj, sectionName);
+      
+      // Collect all fields (from both schema and data)
+      const fields: Array<{ key: string; value: unknown; path: string; dataKey: string; schemaKey: string }> = [];
+      mergedFields.forEach(({ schemaKey, dataKey, value }) => {
+        const fieldPath = prefix ? `${prefix}.${dataKey}` : dataKey;
+        // Also try schema key path for field extraction lookup
+        const schemaFieldPath = prefix ? `${prefix}.${schemaKey}` : schemaKey;
+        const fieldName = this.formatFieldName(schemaKey);
+        fields.push({ key: fieldName, value: value, path: fieldPath, dataKey, schemaKey });
+      });
+      
+      // Sort: extracted fields first, then schema fields, then other fields
+      fields.sort((a, b) => {
+        // Check both data path and schema path for extractions
+        const aExtracted = this.isFieldExtracted(a.path, fieldExtractions).isExtracted || 
+                          this.isFieldExtracted(prefix ? `${prefix}.${a.dataKey}` : a.dataKey, fieldExtractions).isExtracted;
+        const bExtracted = this.isFieldExtracted(b.path, fieldExtractions).isExtracted || 
+                          this.isFieldExtracted(prefix ? `${prefix}.${b.dataKey}` : b.dataKey, fieldExtractions).isExtracted;
+        if (aExtracted && !bExtracted) return -1;
+        if (!aExtracted && bExtracted) return 1;
+        
+        // Then prioritize schema fields over data-only fields
+        // Check if the schemaKey matches a schema field (schemaKey is the canonical name from schema)
+        const aInSchema = schemaObj[a.schemaKey] !== undefined;
+        const bInSchema = schemaObj[b.schemaKey] !== undefined;
+        if (aInSchema && !bInSchema) return -1;
+        if (!aInSchema && bInSchema) return 1;
+        
+        return 0;
+      });
+      
+      // Render fields - try both data path and schema path for field extraction lookup
+      fields.forEach(field => {
+        // Try to find extraction using data key path first, then schema key path
+        const dataPath = prefix ? `${prefix}.${field.dataKey}` : field.dataKey;
+        const schemaPath = prefix ? `${prefix}.${field.key.toLowerCase().replace(/\s+/g, '')}` : field.key.toLowerCase().replace(/\s+/g, '');
+        const extraction = fieldExtractions.find(fe => 
+          fe.fieldPath === dataPath || 
+          fe.fieldPath === schemaPath ||
+          fe.fieldPath === field.path
+        );
+        
+        // Use the path that has an extraction, or fall back to data path
+        const fieldPath = extraction?.fieldPath || dataPath;
+        html += this.renderKeyValue(field.key, field.value, false, fieldPath, emailMessageId, fieldExtractions, frontendUrl);
+      });
+    }
+
+    return html;
+  }
+
+  /**
+   * Convert JSON data directly to formatted HTML using schema-driven approach (same as submission details page)
+   * Always shows ALL sections from schema, even if data is missing or null
+   */
+  private async convertJsonToHtml(data: any, emailMessageId: string, fieldExtractions: any[] = [], frontendUrl: string = 'http://localhost:3000'): Promise<string> {
+    const expectedFieldsSchema = await this.getExpectedFieldsSchema();
     let html = '';
     
+    // Always render all sections from schema, even if data is missing
     // Submission Information
-    if (data.submission) {
-      html += '<div class="section">';
-      html += '<div class="section-header">Submission Information</div>';
-      html += '<table class="details-table">';
-      html += this.renderKeyValue('Named Insured', data.submission.namedInsured, false, 'submission.namedInsured', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('Carrier', data.submission.carrierName, false, 'submission.carrierName', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('Broker', data.submission.brokerName, false, 'submission.brokerName', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('Effective Date', data.submission.effectiveDate, false, 'submission.effectiveDate', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('Expiration Date', data.submission.expirationDate, false, 'submission.expirationDate', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('Submission Type', data.submission.submissionType, false, 'submission.submissionType', emailMessageId, fieldExtractions, frontendUrl);
-      html += '</table></div>';
-    }
+    html += '<div class="section">';
+    html += '<div class="section-header">Submission Information</div>';
+    html += '<table class="details-table">';
+    html += this.renderSectionForEmail('submission', data?.submission || {}, fieldExtractions, 'submission', emailMessageId, frontendUrl, expectedFieldsSchema);
+    html += '</table></div>';
     
     // Locations & Buildings
-    if (data.locations && Array.isArray(data.locations)) {
-      html += '<div class="section">';
-      html += '<div class="section-header">Locations & Buildings</div>';
-      
-      data.locations.forEach((location: any, locationIndex: number) => {
-        html += '<div class="location-group">';
-        html += `<div class="location-title">Location ${location.locationNumber || 'N/A'}</div>`;
-        
-        if (location.buildings && Array.isArray(location.buildings)) {
-          location.buildings.forEach((building: any, buildingIndex: number) => {
-            html += '<div class="building-group">';
-            html += `<div class="building-title">Building ${building.buildingNumber || 'N/A'}</div>`;
-            html += this.renderKeyValue('Address', building.riskAddress, true, `locations[${locationIndex}].buildings[${buildingIndex}].riskAddress`, emailMessageId, fieldExtractions, frontendUrl);
-            html += this.renderKeyValue('Square Feet', building.buildingSqFt?.toLocaleString(), true, `locations[${locationIndex}].buildings[${buildingIndex}].buildingSqFt`, emailMessageId, fieldExtractions, frontendUrl);
-            html += this.renderKeyValue('Building Limit', building.buildingLimit ? `$${building.buildingLimit.toLocaleString()}` : null, true, `locations[${locationIndex}].buildings[${buildingIndex}].buildingLimit`, emailMessageId, fieldExtractions, frontendUrl);
-            html += this.renderKeyValue('Construction', building.constructionType, true, `locations[${locationIndex}].buildings[${buildingIndex}].constructionType`, emailMessageId, fieldExtractions, frontendUrl);
-            html += this.renderKeyValue('Year Built', building.yearBuilt, true, `locations[${locationIndex}].buildings[${buildingIndex}].yearBuilt`, emailMessageId, fieldExtractions, frontendUrl);
-            html += this.renderKeyValue('Sprinklered', building.sprinklered ? 'Yes' : 'No', true, `locations[${locationIndex}].buildings[${buildingIndex}].sprinklered`, emailMessageId, fieldExtractions, frontendUrl);
-            html += '</div>';
-          });
-        }
-        html += '</div>';
-      });
-      html += '</div>';
-    }
+    html += '<div class="section">';
+    html += '<div class="section-header">Locations & Buildings</div>';
+    // Use renderSectionForEmail for consistent nested field handling
+    html += this.renderSectionForEmail('locations', data?.locations || [], fieldExtractions, 'locations', emailMessageId, frontendUrl, expectedFieldsSchema);
+    html += '</div>';
     
     // Coverage & Limits
-    if (data.coverage) {
-      html += '<div class="section">';
-      html += '<div class="section-header">Coverage & Limits</div>';
-      html += '<table class="details-table">';
-      html += this.renderKeyValue('Policy Type', data.coverage.policyType, false, 'coverage.policyType', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('Cause of Loss', data.coverage.causeOfLossForm, false, 'coverage.causeOfLossForm', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('Building Limit', data.coverage.buildingLimit ? `$${data.coverage.buildingLimit.toLocaleString()}` : null, false, 'coverage.buildingLimit', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('BPP Limit', data.coverage.businessPersonalPropertyLimit ? `$${data.coverage.businessPersonalPropertyLimit.toLocaleString()}` : null, false, 'coverage.businessPersonalPropertyLimit', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('Business Income Limit', data.coverage.businessIncomeLimit ? `$${data.coverage.businessIncomeLimit.toLocaleString()}` : null, false, 'coverage.businessIncomeLimit', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('Deductible', data.coverage.deductibleAllPeril ? `$${data.coverage.deductibleAllPeril.toLocaleString()}` : null, false, 'coverage.deductibleAllPeril', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('Coinsurance', data.coverage.coinsurancePercent ? `${data.coverage.coinsurancePercent}%` : null, false, 'coverage.coinsurancePercent', emailMessageId, fieldExtractions, frontendUrl);
-      html += '</table></div>';
-    }
+    html += '<div class="section">';
+    html += '<div class="section-header">Coverage & Limits</div>';
+    html += '<table class="details-table">';
+    html += this.renderSectionForEmail('coverage', data?.coverage || {}, fieldExtractions, 'coverage', emailMessageId, frontendUrl, expectedFieldsSchema);
+    html += '</table></div>';
     
     // Loss History
-    if (data.lossHistory) {
-      html += '<div class="section">';
-      html += '<div class="section-header">Loss History</div>';
-      html += '<table class="details-table">';
-      html += this.renderKeyValue('Period', data.lossHistory.lossHistoryPeriodYears ? `${data.lossHistory.lossHistoryPeriodYears} years` : null, false, 'lossHistory.lossHistoryPeriodYears', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('Number of Claims', data.lossHistory.numberOfClaims, false, 'lossHistory.numberOfClaims', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('Total Incurred', data.lossHistory.totalIncurredLoss ? `$${data.lossHistory.totalIncurredLoss.toLocaleString()}` : null, false, 'lossHistory.totalIncurredLoss', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('Largest Single Loss', data.lossHistory.largestSingleLoss ? `$${data.lossHistory.largestSingleLoss.toLocaleString()}` : null, false, 'lossHistory.largestSingleLoss', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('Open Claims', data.lossHistory.anyOpenClaims ? 'Yes' : 'No', false, 'lossHistory.anyOpenClaims', emailMessageId, fieldExtractions, frontendUrl);
-      html += this.renderKeyValue('CAT Losses', data.lossHistory.anyCatLosses ? 'Yes' : 'No', false, 'lossHistory.anyCatLosses', emailMessageId, fieldExtractions, frontendUrl);
-      html += '</table></div>';
-    }
+    html += '<div class="section">';
+    html += '<div class="section-header">Loss History</div>';
+    html += '<table class="details-table">';
+    html += this.renderSectionForEmail('lossHistory', data?.lossHistory || {}, fieldExtractions, 'lossHistory', emailMessageId, frontendUrl, expectedFieldsSchema);
+    html += '</table></div>';
     
     return html;
   }
 
   /**
+   * Synchronous version of field name matching (no LLM fallback)
+   */
+  private matchFieldNameSync(
+    dataFieldName: string, 
+    schemaFieldNames: string[]
+  ): string | null {
+    const normalized = dataFieldName.toLowerCase().trim();
+    
+    // Exact match (case-insensitive)
+    const exactMatch = schemaFieldNames.find(s => s.toLowerCase() === normalized);
+    if (exactMatch) return exactMatch;
+    
+    // Common field name mappings/aliases (mapped to current schema field names)
+    const fieldMappings: Record<string, string[]> = {
+      'totalincurred': ['totalIncurred'],
+      'totalincurredloss': ['totalIncurred'], // Map old name to new
+      'causefloss': ['causeOfLoss'],
+      'causeflossform': ['causeOfLoss'], // Map old name to new
+      'lossdescription': ['lossDescription', 'lossNarrativeSummary'], // Both exist in schema
+      'lossnarrativesummary': ['lossNarrativeSummary', 'lossDescription'], // Both exist in schema
+      'namedinsured': ['namedInsured'],
+      'carriername': ['carrierName'],
+      'brokername': ['brokerName'],
+      'effectivedate': ['effectiveDate'],
+      'expirationdate': ['expirationDate'],
+    };
+    
+    // Check mappings
+    if (fieldMappings[normalized]) {
+      for (const mappedName of fieldMappings[normalized]) {
+        if (schemaFieldNames.includes(mappedName)) {
+          return mappedName;
+        }
+      }
+    }
+    
+    // Fuzzy match: remove common suffixes/prefixes and try again
+    const fuzzyVariations = [
+      normalized.replace(/loss$/, '').replace(/^total/, ''),
+      normalized.replace(/form$/, ''),
+      normalized.replace(/summary$/, ''),
+      normalized.replace(/description$/, ''),
+    ];
+    
+    for (const variation of fuzzyVariations) {
+      if (variation && variation !== normalized) {
+        const match = schemaFieldNames.find(s => 
+          s.toLowerCase().includes(variation) || variation.includes(s.toLowerCase())
+        );
+        if (match) return match;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Intelligently match a field name from data to a schema field name
+   * Uses deterministic matching first, with optional LLM fallback for complex cases
+   */
+  private async matchFieldName(
+    dataFieldName: string, 
+    schemaFieldNames: string[],
+    sectionContext?: string,
+    useLLMFallback: boolean = false
+  ): Promise<string | null> {
+    const normalized = dataFieldName.toLowerCase().trim();
+    
+    // Exact match (case-insensitive)
+    const exactMatch = schemaFieldNames.find(s => s.toLowerCase() === normalized);
+    if (exactMatch) return exactMatch;
+    
+    // Common field name mappings/aliases (mapped to current schema field names)
+    const fieldMappings: Record<string, string[]> = {
+      'totalincurred': ['totalIncurred'],
+      'totalincurredloss': ['totalIncurred'], // Map old name to new
+      'causefloss': ['causeOfLoss'],
+      'causeflossform': ['causeOfLoss'], // Map old name to new
+      'lossdescription': ['lossDescription', 'lossNarrativeSummary'], // Both exist in schema
+      'lossnarrativesummary': ['lossNarrativeSummary', 'lossDescription'], // Both exist in schema
+      'namedinsured': ['namedInsured'],
+      'carriername': ['carrierName'],
+      'brokername': ['brokerName'],
+      'effectivedate': ['effectiveDate'],
+      'expirationdate': ['expirationDate'],
+    };
+    
+    // Check mappings
+    if (fieldMappings[normalized]) {
+      for (const mappedName of fieldMappings[normalized]) {
+        if (schemaFieldNames.includes(mappedName)) {
+          return mappedName;
+        }
+      }
+    }
+    
+    // Fuzzy match: remove common suffixes/prefixes and try again
+    const fuzzyVariations = [
+      normalized.replace(/loss$/, '').replace(/^total/, ''),
+      normalized.replace(/form$/, ''),
+      normalized.replace(/summary$/, ''),
+      normalized.replace(/description$/, ''),
+    ];
+    
+    for (const variation of fuzzyVariations) {
+      if (variation && variation !== normalized) {
+        const match = schemaFieldNames.find(s => 
+          s.toLowerCase().includes(variation) || variation.includes(s.toLowerCase())
+        );
+        if (match) return match;
+      }
+    }
+    
+    // LLM fallback for complex semantic matching (optional, disabled by default for performance)
+    if (useLLMFallback && this.configService.get<string>('OPENAI_API_KEY')) {
+      try {
+        return await this.matchFieldNameWithLLM(dataFieldName, schemaFieldNames, sectionContext);
+      } catch (error) {
+        this.logger.warn(`LLM field matching failed for "${dataFieldName}": ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Use LLM to semantically match a field name to schema fields
+   * This is a fallback for cases where deterministic matching fails
+   */
+  private async matchFieldNameWithLLM(
+    dataFieldName: string,
+    schemaFieldNames: string[],
+    sectionContext?: string
+  ): Promise<string | null> {
+    // Dynamic import for OpenAI
+    let OpenAI: any;
+    try {
+      OpenAI = require('openai').default;
+    } catch (e) {
+      return null;
+    }
+
+    const apiKey = this.configService.get<string>('OPENAI_API_KEY');
+    if (!apiKey) return null;
+
+    const openai = new OpenAI({ apiKey });
+
+    const prompt = `You are a data mapping expert. Match the following field name to the most appropriate schema field.
+
+Data field name: "${dataFieldName}"
+Section context: ${sectionContext || 'unknown'}
+Available schema fields: ${schemaFieldNames.join(', ')}
+
+Return ONLY the exact schema field name that best matches the data field name, or "null" if no good match exists.
+Consider semantic meaning, not just string similarity.
+
+Response format: Just the field name or "null"`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: this.configService.get<string>('OPENAI_MODEL') || 'gpt-4o-mini', // Use cheaper model for this
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a data mapping expert. Return only the field name or "null".',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.0,
+        max_tokens: 50,
+      });
+
+      const matched = response.choices[0].message.content?.trim() || null;
+      if (matched && matched !== 'null' && schemaFieldNames.includes(matched)) {
+        return matched;
+      }
+    } catch (error) {
+      this.logger.warn(`LLM field matching error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    return null;
+  }
+
+  /**
+   * Merge schema fields with actual data fields, intelligently matching field names
+   * Returns a combined set of fields with values from data
+   */
+  private mergeFieldsWithData(
+    schemaFields: Record<string, unknown>,
+    dataFields: Record<string, unknown>,
+    sectionContext?: string
+  ): Array<{ schemaKey: string; dataKey: string; value: unknown }> {
+    const schemaKeys = Object.keys(schemaFields);
+    const dataKeys = Object.keys(dataFields);
+    const merged: Array<{ schemaKey: string; dataKey: string; value: unknown }> = [];
+    const usedDataKeys = new Set<string>();
+    
+    // First, match schema fields to data fields
+    schemaKeys.forEach(schemaKey => {
+      // Try exact match first
+      if (dataKeys.includes(schemaKey) && !usedDataKeys.has(schemaKey)) {
+        merged.push({ schemaKey, dataKey: schemaKey, value: dataFields[schemaKey] });
+        usedDataKeys.add(schemaKey);
+      } else {
+        // Try intelligent matching (synchronous - no LLM fallback)
+        const matchedKey = this.matchFieldNameSync(schemaKey, dataKeys.filter(k => !usedDataKeys.has(k)));
+        if (matchedKey) {
+          merged.push({ schemaKey, dataKey: matchedKey, value: dataFields[matchedKey] });
+          usedDataKeys.add(matchedKey);
+        } else {
+          // Schema field not found in data - still include it with null
+          merged.push({ schemaKey, dataKey: schemaKey, value: null });
+        }
+      }
+    });
+    
+    // Then, add any remaining data fields that weren't matched to schema
+    dataKeys.forEach(dataKey => {
+      if (!usedDataKeys.has(dataKey)) {
+        // Check if it's a close match to any schema field we already have
+        const matchedSchemaKey = this.matchFieldNameSync(dataKey, schemaKeys);
+        if (!matchedSchemaKey) {
+          // This is a new field not in schema - include it
+          merged.push({ schemaKey: dataKey, dataKey, value: dataFields[dataKey] });
+        }
+      }
+    });
+    
+    return merged;
+  }
+
+  /**
+   * Normalize loss history from priorLosses or losses array structure to aggregate fields
+   * Converts: { priorLosses: [{ totalIncurred: 100000, ... }] } or { losses: [{ totalIncurred: 100000, ... }] }
+   * To: { totalIncurred: 100000, numberOfClaims: 1, ... }
+   */
+  private normalizeLossHistoryFromPriorLosses(lossHistoryData: Record<string, unknown>): Record<string, unknown> {
+    const normalized: Record<string, unknown> = { ...lossHistoryData };
+    
+    // Check for both 'priorLosses' and 'losses' arrays
+    const lossesArray = (Array.isArray(lossHistoryData.priorLosses) && lossHistoryData.priorLosses.length > 0)
+      ? lossHistoryData.priorLosses as Array<Record<string, unknown>>
+      : (Array.isArray(lossHistoryData.losses) && lossHistoryData.losses.length > 0)
+      ? lossHistoryData.losses as Array<Record<string, unknown>>
+      : null;
+    
+    if (lossesArray) {
+      // Aggregate fields from losses array
+      let totalIncurred = 0;
+      let largestSingleLoss = 0;
+      let hasOpenClaims = false;
+      let hasCatLosses = false;
+      const claimCount = lossesArray.length;
+      
+      lossesArray.forEach((loss: Record<string, unknown>) => {
+        const incurred = typeof loss.totalIncurred === 'number' ? loss.totalIncurred : 
+                        typeof loss.incurred === 'number' ? loss.incurred : 0;
+        totalIncurred += incurred;
+        if (incurred > largestSingleLoss) {
+          largestSingleLoss = incurred;
+        }
+        
+        if (loss.open === true || loss.status === 'open' || loss.status === 'Open') {
+          hasOpenClaims = true;
+        }
+        if (loss.catastrophe === true || loss.cat === true || loss.catastropheLoss === true) {
+          hasCatLosses = true;
+        }
+      });
+      
+      // Map to expected aggregate fields (only if not already set)
+      // Store as totalIncurred (canonical schema field name)
+      if (normalized.totalIncurred === null || normalized.totalIncurred === undefined) {
+        normalized.totalIncurred = totalIncurred > 0 ? totalIncurred : null;
+      }
+      if (normalized.numberOfClaims === null || normalized.numberOfClaims === undefined) {
+        normalized.numberOfClaims = claimCount > 0 ? claimCount : null;
+      }
+      if (normalized.largestSingleLoss === null || normalized.largestSingleLoss === undefined) {
+        normalized.largestSingleLoss = largestSingleLoss > 0 ? largestSingleLoss : null;
+      }
+      if (normalized.anyOpenClaims === null || normalized.anyOpenClaims === undefined) {
+        normalized.anyOpenClaims = hasOpenClaims;
+      }
+      if (normalized.anyCatLosses === null || normalized.anyCatLosses === undefined) {
+        normalized.anyCatLosses = hasCatLosses;
+      }
+    }
+    
+    // Remove both priorLosses and losses arrays from normalized output (we've aggregated them)
+    delete normalized.priorLosses;
+    delete normalized.losses;
+    
+    return normalized;
+  }
+
+  /**
+   * Map priorLosses or losses array paths to aggregate field paths
+   * e.g., "lossHistory.priorLosses[0].totalIncurred" -> "lossHistory.totalIncurred"
+   * e.g., "lossHistory.losses[0].totalIncurred" -> "lossHistory.totalIncurred"
+   */
+  private mapPriorLossesPathToAggregate(fieldPath: string): string[] {
+    const paths: string[] = [fieldPath]; // Always include original path
+    
+    // Check if this is a priorLosses or losses path
+    if (fieldPath.includes('priorLosses[') || fieldPath.includes('losses[')) {
+      const lossesMatch = fieldPath.match(/^lossHistory\.(?:priorLosses|losses)\[\d+\]\.(.+)$/);
+      if (lossesMatch) {
+        const fieldName = lossesMatch[1];
+        // Map common losses fields to aggregate fields
+        const fieldMapping: Record<string, string> = {
+          'totalIncurredLoss': 'totalIncurred', // Map old name to new canonical name
+          'incurred': 'totalIncurred',
+          'paid': 'paidLoss',
+          'reserve': 'outstandingReserve',
+          'open': 'anyOpenClaims',
+          'catastrophe': 'anyCatLosses',
+          'cat': 'anyCatLosses',
+        };
+        
+        const aggregateField = fieldMapping[fieldName.toLowerCase()];
+        if (aggregateField) {
+          paths.push(`lossHistory.${aggregateField}`);
+        }
+      }
+    }
+    
+    return paths;
+  }
+
+  /**
+   * Check if a field was extracted (has an extraction record with a non-null value)
+   * Intelligently matches field paths, handling variations and alternate field names
+   */
+  private isFieldExtracted(fieldPath: string | undefined, fieldExtractions: any[]): { isExtracted: boolean; extractedValue: any } {
+    if (!fieldPath) {
+      return { isExtracted: false, extractedValue: null };
+    }
+    
+    // Check direct path
+    let extraction = fieldExtractions.find(fe => fe.fieldPath === fieldPath);
+    
+    // If not found, try intelligent matching
+    if (!extraction) {
+      const pathParts = fieldPath.split('.');
+      if (pathParts.length >= 2) {
+        const section = pathParts[0];
+        const fieldName = pathParts.slice(1).join('.');
+        
+        // Try to find extractions with similar field names in the same section
+        const sectionExtractions = fieldExtractions.filter(fe => fe.fieldPath.startsWith(section + '.'));
+        const normalizedFieldName = fieldName.toLowerCase();
+        
+        // Try exact match (case-insensitive)
+        extraction = sectionExtractions.find(fe => 
+          fe.fieldPath.toLowerCase().endsWith('.' + normalizedFieldName)
+        );
+        
+        // Try field name variations
+        if (!extraction) {
+          const fieldMappings: Record<string, string[]> = {
+            'totalincurredloss': ['totalincurred'], // Map old name to new
+            'totalincurred': ['totalincurred'], // Canonical name
+            'causeflossform': ['causefloss', 'causeflossform'],
+            'causefloss': ['causeflossform', 'causefloss'],
+            'lossnarrativesummary': ['lossdescription', 'lossnarrativesummary'],
+            'lossdescription': ['lossnarrativesummary', 'lossdescription'],
+          };
+          
+          const variations = fieldMappings[normalizedFieldName] || [normalizedFieldName];
+          for (const variation of variations) {
+            extraction = sectionExtractions.find(fe => 
+              fe.fieldPath.toLowerCase().endsWith('.' + variation)
+            );
+            if (extraction) break;
+          }
+        }
+      }
+    }
+    
+    // If not found and this is a lossHistory aggregate field, check priorLosses/losses paths and alternate field names
+    if (!extraction && fieldPath.startsWith('lossHistory.')) {
+        const aggregateField = fieldPath.replace('lossHistory.', '');
+        
+        // Check for alternate field name (e.g., totalIncurredLoss -> totalIncurred)
+        const alternateField = aggregateField === 'totalIncurredLoss' ? 'totalIncurred' : null;
+        if (alternateField) {
+          const alternatePath = `lossHistory.${alternateField}`;
+          extraction = fieldExtractions.find(fe => fe.fieldPath === alternatePath);
+          if (extraction && extraction.fieldValue !== null && extraction.fieldValue !== undefined && extraction.fieldValue !== '') {
+            return { isExtracted: true, extractedValue: extraction.fieldValue };
+          }
+        }
+        
+        // Look for any priorLosses or losses extractions that might map to this aggregate field
+        const priorLossesExtractions = fieldExtractions.filter(fe => 
+          (fe.fieldPath.includes('lossHistory.priorLosses[') || fe.fieldPath.includes('lossHistory.losses[')) && 
+          fe.fieldValue !== null && 
+          fe.fieldValue !== undefined && 
+          fe.fieldValue !== ''
+        );
+        
+        // If this is totalIncurred, sum up all priorLosses/losses totalIncurred values
+        if (aggregateField === 'totalIncurred') {
+        let sum = 0;
+        priorLossesExtractions.forEach(fe => {
+          if (fe.fieldPath.includes('.totalIncurred') || fe.fieldPath.includes('.incurred')) {
+            const value = typeof fe.fieldValue === 'number' ? fe.fieldValue : 
+                         typeof fe.fieldValue === 'string' ? parseFloat(fe.fieldValue) || 0 : 0;
+            sum += value;
+          }
+        });
+        if (sum > 0) {
+          return { isExtracted: true, extractedValue: sum };
+        }
+      }
+      
+      // If this is numberOfClaims, count priorLosses/losses entries
+      if (aggregateField === 'numberOfClaims') {
+        const uniqueIndices = new Set(
+          priorLossesExtractions
+            .map(fe => fe.fieldPath.match(/(?:priorLosses|losses)\[(\d+)\]/)?.[1])
+            .filter((idx): idx is string => idx !== undefined)
+        );
+        if (uniqueIndices.size > 0) {
+          return { isExtracted: true, extractedValue: uniqueIndices.size };
+        }
+      }
+      
+      // For other fields, check if any priorLosses extraction maps to it
+      const mappedPaths = this.mapPriorLossesPathToAggregate(fieldPath);
+      for (const mappedPath of mappedPaths) {
+        extraction = fieldExtractions.find(fe => fe.fieldPath === mappedPath);
+        if (extraction && extraction.fieldValue !== null && extraction.fieldValue !== undefined && extraction.fieldValue !== '') {
+          break;
+        }
+      }
+    }
+    
+    if (extraction && extraction.fieldValue !== null && extraction.fieldValue !== undefined && extraction.fieldValue !== '') {
+      return { isExtracted: true, extractedValue: extraction.fieldValue };
+    }
+    
+    return { isExtracted: false, extractedValue: null };
+  }
+
+  /**
    * Render a key-value pair as a table row or div
+   * Always shows the field - no filtering
+   * Uses same formatting logic as submission details page
    */
   private renderKeyValue(
     key: string, 
@@ -1360,17 +2002,17 @@ The Auxo processor
     fieldExtractions: any[] = [],
     frontendUrl: string = 'http://localhost:3000'
   ): string {
-    const displayValue = value !== null && value !== undefined ? String(value) : 'N/A';
+    // Check if this field was extracted (has an extraction record with a non-null value)
+    const { isExtracted, extractedValue } = this.isFieldExtracted(fieldPath, fieldExtractions);
+    
+    // Use extracted value if available, otherwise use the value from data object
+    const actualValue = isExtracted && extractedValue !== null ? extractedValue : value;
+    
+    // Format value the same way as submission details page
+    const displayValue = this.formatValueForEmail(actualValue);
+    
+    // Apply additional formatting for email (money, percentages, etc.)
     const formattedValue = this.formatValue(displayValue);
-    
-    // Check if this field was extracted (has a value and extraction record)
-    let isExtracted = false;
-    let hasValue = value !== null && value !== undefined && value !== '';
-    
-    if (fieldPath && hasValue) {
-      const extraction = fieldExtractions.find(fe => fe.fieldPath === fieldPath);
-      isExtracted = extraction && extraction.fieldValue !== null && extraction.fieldValue !== undefined && extraction.fieldValue !== '';
-    }
     
     // Create hyperlink if field was extracted
     let valueHtml = formattedValue;
@@ -1380,9 +2022,9 @@ The Auxo processor
     }
     
     if (asDiv) {
-      return `<div style="padding: 4px 0; font-size: 13px;"><strong style="color: #374151;">${this.escapeHtml(key)}:</strong> <span>${valueHtml}</span></div>`;
+      return `<div style="padding: 4px 0; font-size: 13px; word-wrap: break-word; overflow-wrap: break-word; white-space: normal; text-overflow: clip; overflow: visible;"><strong style="color: #374151;">${this.escapeHtml(key)}:</strong> <span style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal;">${valueHtml}</span></div>`;
     } else {
-      return `<tr><td>${this.escapeHtml(key)}</td><td>${valueHtml}</td></tr>`;
+      return `<tr><td style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal; text-overflow: clip; overflow: visible;">${this.escapeHtml(key)}</td><td style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal; text-overflow: clip; overflow: visible;">${valueHtml}</td></tr>`;
     }
   }
 

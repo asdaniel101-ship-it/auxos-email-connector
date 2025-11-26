@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getApiUrl } from '@/lib/api-url';
+import { useAdminAuth } from '@/hooks/useAdminAuth';
 const API_URL = getApiUrl();
 
 interface EmailMessage {
@@ -57,24 +58,36 @@ function SubmissionPageContent() {
   const id = params.id as string;
   const fieldParam = searchParams.get('field');
   const fromEmail = searchParams.get('fromEmail') === 'true';
+  const { isAuthenticated } = useAdminAuth();
 
   const [submission, setSubmission] = useState<EmailMessage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedField, setSelectedField] = useState<FieldExtraction | null>(null);
+  const [expectedSchema, setExpectedSchema] = useState<Record<string, unknown> | null>(null);
 
   const loadSubmission = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/email-intake/submissions/${id}`);
-      if (!response.ok) {
-        if (response.status === 404) {
+      const [submissionResponse, schemaResponse] = await Promise.all([
+        fetch(`${API_URL}/email-intake/submissions/${id}`),
+        fetch(`${API_URL}/field-schema/expected`),
+      ]);
+      
+      if (!submissionResponse.ok) {
+        if (submissionResponse.status === 404) {
           throw new Error('Submission not found');
         }
         throw new Error('Failed to load submission');
       }
-      const data = await response.json();
-      setSubmission(data);
+      
+      const submissionData = await submissionResponse.json();
+      setSubmission(submissionData);
+      
+      if (schemaResponse.ok) {
+        const schemaData = await schemaResponse.json();
+        setExpectedSchema(schemaData);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load submission');
     } finally {
@@ -209,59 +222,219 @@ function SubmissionPageContent() {
     );
   };
 
+  // Helper to merge schema fields with data fields
+  const mergeFieldsWithSchema = (
+    schemaFields: Record<string, unknown>,
+    dataFields: Record<string, unknown>
+  ): Array<{ schemaKey: string; dataKey: string; value: unknown }> => {
+    const schemaKeys = Object.keys(schemaFields);
+    const dataKeys = Object.keys(dataFields);
+    const merged: Array<{ schemaKey: string; dataKey: string; value: unknown }> = [];
+    const usedDataKeys = new Set<string>();
+    
+    // First, match schema fields to data fields
+    schemaKeys.forEach(schemaKey => {
+      // Try exact match first
+      if (dataKeys.includes(schemaKey) && !usedDataKeys.has(schemaKey)) {
+        merged.push({ schemaKey, dataKey: schemaKey, value: dataFields[schemaKey] });
+        usedDataKeys.add(schemaKey);
+      } else {
+        // Schema field not found in data - still include it with null
+        merged.push({ schemaKey, dataKey: schemaKey, value: null });
+      }
+    });
+    
+    // Then, add any remaining data fields that weren't matched to schema
+    dataKeys.forEach(dataKey => {
+      if (!usedDataKeys.has(dataKey)) {
+        // This is a new field not in schema - include it
+        merged.push({ schemaKey: dataKey, dataKey, value: dataFields[dataKey] });
+      }
+    });
+    
+    return merged;
+  };
+
   const renderSection = (
     sectionName: string,
     sectionData: unknown,
     fieldExtractions: FieldExtraction[] = [],
     prefix = '',
   ): React.JSX.Element | null => {
-    if (!sectionData || typeof sectionData !== 'object') {
-      return null;
-    }
-
+    // Normalize section name for schema lookup
+    const normalizedSectionName = sectionName.replace(/\s+/g, '').replace(/^./, (str) => str.toLowerCase());
+    const schemaSection = expectedSchema?.[normalizedSectionName] || expectedSchema?.[sectionName.toLowerCase()];
+    
     const fields: React.JSX.Element[] = [];
 
-    if (Array.isArray(sectionData)) {
-      sectionData.forEach((item: unknown, index) => {
-        if (item && typeof item === 'object' && !Array.isArray(item)) {
-          Object.entries(item as Record<string, unknown>).forEach(([key, value]) => {
-            const fieldPath = prefix ? `${prefix}[${index}].${key}` : `${index}.${key}`;
+    if (Array.isArray(schemaSection)) {
+      // Handle array sections (like locations)
+      const dataArray = Array.isArray(sectionData) ? sectionData : [];
+      const schemaItem = schemaSection[0] as Record<string, unknown> | undefined;
+      
+      if (schemaItem) {
+        dataArray.forEach((item: unknown, index: number) => {
+          if (item && typeof item === 'object' && !Array.isArray(item)) {
+            const itemData = item as Record<string, unknown>;
+            
+            // Render all fields from schema
+            Object.entries(schemaItem).forEach(([key, _schemaValue]) => {
+              // Skip locationNumber if it's already shown
+              if ((sectionName.toLowerCase() === 'locations' || prefix === 'locations') && key === 'locationNumber') {
+                return;
+              }
+              
+              const value = itemData[key] !== undefined ? itemData[key] : null;
+              const fieldPath = prefix ? `${prefix}[${index}].${key}` : `${index}.${key}`;
+              const fieldName = key
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/^./, (str: string) => str.toUpperCase())
+                .trim();
+              
+              // Handle nested arrays (like buildings)
+              if (key === 'buildings' && Array.isArray(schemaItem[key])) {
+                const buildingsData = Array.isArray(value) ? value : [];
+                const buildingSchema = (schemaItem[key] as unknown[])[0] as Record<string, unknown> | undefined;
+                
+                if (buildingSchema) {
+                  buildingsData.forEach((building: unknown, buildingIndex: number) => {
+                    if (building && typeof building === 'object' && !Array.isArray(building)) {
+                      const buildingData = building as Record<string, unknown>;
+                      
+                      // Render all building fields from schema
+                      Object.entries(buildingSchema).forEach(([buildingKey, _buildingSchemaValue]) => {
+                        const buildingValue = buildingData[buildingKey] !== undefined ? buildingData[buildingKey] : null;
+                        const buildingFieldPath = prefix ? `${prefix}[${index}].buildings[${buildingIndex}].${buildingKey}` : `${index}.buildings[${buildingIndex}].${buildingKey}`;
+                        const buildingFieldName = buildingKey
+                          .replace(/([A-Z])/g, ' $1')
+                          .replace(/^./, (str: string) => str.toUpperCase())
+                          .trim();
+                        const field = renderField(buildingFieldPath, buildingFieldName, buildingValue, fieldExtractions);
+                        if (field) fields.push(field);
+                      });
+                    }
+                  });
+                }
+              } else {
+                // Regular location field
+                const field = renderField(fieldPath, fieldName, value, fieldExtractions);
+                if (field) fields.push(field);
+              }
+            });
+          }
+        });
+      }
+    } else if (schemaSection && typeof schemaSection === 'object' && !Array.isArray(schemaSection)) {
+      // Handle object sections (like submission, coverage, lossHistory)
+      const schemaObj = schemaSection as Record<string, unknown>;
+      const dataObj = (sectionData && typeof sectionData === 'object' && !Array.isArray(sectionData))
+        ? sectionData as Record<string, unknown>
+        : {};
+      
+      // Special handling for lossHistory: normalize priorLosses or losses array to aggregate fields (if present)
+      let normalizedDataObj = dataObj;
+      if ((sectionName.toLowerCase() === 'losshistory' || prefix === 'lossHistory')) {
+        // Check for both 'priorLosses' and 'losses' arrays
+        const lossesArray = (dataObj.priorLosses && Array.isArray(dataObj.priorLosses))
+          ? dataObj.priorLosses as Array<Record<string, unknown>>
+          : (dataObj.losses && Array.isArray(dataObj.losses))
+          ? dataObj.losses as Array<Record<string, unknown>>
+          : null;
+        
+        if (lossesArray) {
+          // Aggregate losses array into aggregate fields
+          let totalIncurred = 0;
+          let largestSingleLoss = 0;
+          let hasOpenClaims = false;
+          let hasCatLosses = false;
+          const claimCount = lossesArray.length;
+          
+          lossesArray.forEach((loss: Record<string, unknown>) => {
+            const incurred = typeof loss.totalIncurred === 'number' ? loss.totalIncurred : 
+                            typeof loss.incurred === 'number' ? loss.incurred : 0;
+            totalIncurred += incurred;
+            if (incurred > largestSingleLoss) {
+              largestSingleLoss = incurred;
+            }
+            if (loss.open === true || loss.status === 'open' || loss.status === 'Open') {
+              hasOpenClaims = true;
+            }
+            if (loss.catastrophe === true || loss.cat === true || loss.catastropheLoss === true) {
+              hasCatLosses = true;
+            }
+          });
+          
+          normalizedDataObj = {
+            ...dataObj,
+            totalIncurred: dataObj.totalIncurred ?? (totalIncurred > 0 ? totalIncurred : null),
+            numberOfClaims: dataObj.numberOfClaims ?? (claimCount > 0 ? claimCount : null),
+            largestSingleLoss: dataObj.largestSingleLoss ?? (largestSingleLoss > 0 ? largestSingleLoss : null),
+            anyOpenClaims: dataObj.anyOpenClaims ?? hasOpenClaims,
+            anyCatLosses: dataObj.anyCatLosses ?? hasCatLosses,
+          };
+          delete normalizedDataObj.priorLosses;
+          delete normalizedDataObj.losses;
+        }
+      }
+      
+      // Merge schema fields with actual data fields
+      const mergedFields = mergeFieldsWithSchema(schemaObj, normalizedDataObj);
+      
+      // Render all merged fields
+      mergedFields.forEach(({ schemaKey, dataKey, value }) => {
+        const fieldPath = prefix ? `${prefix}.${dataKey}` : dataKey;
+        const fieldName = schemaKey
+          .replace(/([A-Z])/g, ' $1')
+          .replace(/^./, (str: string) => str.toUpperCase())
+          .trim();
+        const field = renderField(fieldPath, fieldName, value, fieldExtractions);
+        if (field) fields.push(field);
+      });
+    } else {
+      // Fallback: if no schema, render from data (backward compatibility)
+      if (!sectionData || typeof sectionData !== 'object') {
+        return null;
+      }
+
+      if (Array.isArray(sectionData)) {
+        sectionData.forEach((item: unknown, index) => {
+          if (item && typeof item === 'object' && !Array.isArray(item)) {
+            Object.entries(item as Record<string, unknown>).forEach(([key, value]) => {
+              const fieldPath = prefix ? `${prefix}[${index}].${key}` : `${index}.${key}`;
+              const fieldName = key
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/^./, (str: string) => str.toUpperCase())
+                .trim();
+              const field = renderField(fieldPath, fieldName, value, fieldExtractions);
+              if (field) fields.push(field);
+            });
+          }
+        });
+      } else {
+        Object.entries(sectionData as Record<string, unknown>).forEach(([key, value]: [string, unknown]) => {
+          if (value && typeof value === 'object' && !Array.isArray(value)) {
+            // Nested object - render recursively
+            const nested = renderSection(
+              key,
+              value,
+              fieldExtractions,
+              prefix ? `${prefix}.${key}` : key,
+            );
+            if (nested) fields.push(nested);
+          } else {
+            const fieldPath = prefix ? `${prefix}.${key}` : key;
             const fieldName = key
               .replace(/([A-Z])/g, ' $1')
               .replace(/^./, (str: string) => str.toUpperCase())
               .trim();
             const field = renderField(fieldPath, fieldName, value, fieldExtractions);
             if (field) fields.push(field);
-          });
-        }
-      });
-    } else {
-      Object.entries(sectionData as Record<string, unknown>).forEach(([key, value]: [string, unknown]) => {
-        if (value && typeof value === 'object' && !Array.isArray(value)) {
-          // Nested object - render recursively
-          const nested = renderSection(
-            key,
-            value,
-            fieldExtractions,
-            prefix ? `${prefix}.${key}` : key,
-          );
-          if (nested) fields.push(nested);
-        } else {
-          const fieldPath = prefix ? `${prefix}.${key}` : key;
-          const fieldName = key
-            .replace(/([A-Z])/g, ' $1')
-            .replace(/^./, (str: string) => str.toUpperCase())
-            .trim();
-          const field = renderField(fieldPath, fieldName, value, fieldExtractions);
-          if (field) fields.push(field);
-        }
-      });
+          }
+        });
+      }
     }
 
-    if (fields.length === 0) {
-      return null;
-    }
-
+    // Always show section header, even if no fields (show "No data available")
     return (
       <div key={sectionName} className="mb-8">
         <h2 className="text-xl font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-200">
@@ -270,7 +443,11 @@ function SubmissionPageContent() {
             .replace(/^./, (str) => str.toUpperCase())
             .trim()}
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{fields}</div>
+        {fields.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{fields}</div>
+        ) : (
+          <div className="text-slate-500 italic p-4 bg-slate-50 rounded-lg">No data available</div>
+        )}
       </div>
     );
   };
@@ -313,12 +490,14 @@ function SubmissionPageContent() {
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <Link
-                href="/dashboard"
-                className="text-blue-600 hover:text-blue-800 font-medium mb-2 inline-block"
-              >
-                ← Back to Dashboard
-              </Link>
+              {isAuthenticated && (
+                <Link
+                  href="/dashboard"
+                  className="text-blue-600 hover:text-blue-800 font-medium mb-2 inline-block"
+                >
+                  ← Back to Dashboard
+                </Link>
+              )}
               <h1 className="text-3xl font-bold text-slate-900">Submission Details</h1>
               {fromEmail && (
                 <p className="text-sm text-blue-600 mt-2">
@@ -403,34 +582,32 @@ function SubmissionPageContent() {
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
               <h2 className="text-2xl font-semibold text-slate-900 mb-6">Extracted Fields</h2>
 
-              {submission.extractionResult.data && (
-                <div>
-                  {renderSection(
-                    'Submission',
-                    submission.extractionResult.data.submission,
-                    fieldExtractions,
-                    'submission',
-                  )}
-                  {renderSection(
-                    'Locations',
-                    submission.extractionResult.data.locations,
-                    fieldExtractions,
-                    'locations',
-                  )}
-                  {renderSection(
-                    'Coverage',
-                    submission.extractionResult.data.coverage,
-                    fieldExtractions,
-                    'coverage',
-                  )}
-                  {renderSection(
-                    'Loss History',
-                    submission.extractionResult.data.lossHistory,
-                    fieldExtractions,
-                    'lossHistory',
-                  )}
-                </div>
-              )}
+              <div>
+                {renderSection(
+                  'Submission',
+                  submission.extractionResult?.data?.submission || {},
+                  fieldExtractions,
+                  'submission',
+                )}
+                {renderSection(
+                  'Locations',
+                  submission.extractionResult?.data?.locations || [],
+                  fieldExtractions,
+                  'locations',
+                )}
+                {renderSection(
+                  'Coverage',
+                  submission.extractionResult?.data?.coverage || {},
+                  fieldExtractions,
+                  'coverage',
+                )}
+                {renderSection(
+                  'Loss History',
+                  submission.extractionResult?.data?.lossHistory || {},
+                  fieldExtractions,
+                  'lossHistory',
+                )}
+              </div>
 
               {submission.extractionResult.qaFlags && (
                 <div className="mt-8 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
@@ -454,7 +631,45 @@ function SubmissionPageContent() {
               className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+              <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4">
+                <div className="flex items-center justify-between mb-3">
+                  <button
+                    onClick={() => {
+                      setSelectedField(null);
+                      // Scroll to the field after closing the modal
+                      setTimeout(() => {
+                        const element = document.getElementById(`field-${selectedField.id}`);
+                        if (element) {
+                          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                      }, 100);
+                    }}
+                    className="text-blue-600 hover:text-blue-800 font-medium text-sm flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 19l-7-7 7-7"
+                      />
+                    </svg>
+                    Back to full submission
+                  </button>
+                  <button
+                    onClick={() => setSelectedField(null)}
+                    className="text-slate-400 hover:text-slate-600"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
                 <div>
                   <h2 className="text-xl font-bold text-slate-900">{selectedField.fieldName}</h2>
                   <p className="text-sm text-slate-600 mt-1">
@@ -468,19 +683,6 @@ function SubmissionPageContent() {
                     </span>
                   </p>
                 </div>
-                <button
-                  onClick={() => setSelectedField(null)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
               </div>
 
               <div className="p-6 space-y-4">

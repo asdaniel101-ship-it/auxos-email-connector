@@ -48,6 +48,87 @@ export class FieldSchemaService {
   }
 
   /**
+   * Normalize section name for lookup (handles "Loss History" -> "lossHistory", etc.)
+   */
+  private normalizeSectionName(sectionName: string): string {
+    // Remove spaces and convert to camelCase
+    return sectionName
+      .replace(/\s+/g, '')
+      .replace(/^./, (str) => str.toLowerCase());
+  }
+
+  /**
+   * Convert field-schema.json structure to expected schema format for rendering
+   * This is the source of truth used by both email reply and submission details page
+   * Keys are normalized to handle both "Loss History" and "lossHistory" lookups
+   */
+  convertToExpectedSchema(schema: any): Record<string, unknown> {
+    const expected: Record<string, unknown> = {};
+
+    // Process each top-level section
+    Object.entries(schema).forEach(([sectionName, sectionDef]) => {
+      if (sectionName === 'locations') {
+        // Handle locations array
+        const locationDef = sectionDef as any;
+        if (locationDef.type === 'array' && locationDef.items) {
+          const locationItem = locationDef.items;
+          const locationSchema: Record<string, unknown> = {};
+
+          Object.entries(locationItem).forEach(([key, fieldDef]) => {
+            if (key === 'buildings') {
+              // Handle nested buildings array
+              const buildingDef = fieldDef as any;
+              if (buildingDef.type === 'array' && buildingDef.items) {
+                const buildingItem = buildingDef.items;
+                const buildingSchema: Record<string, unknown> = {};
+                Object.keys(buildingItem).forEach((buildingKey) => {
+                  buildingSchema[buildingKey] = null;
+                });
+                locationSchema[key] = [buildingSchema];
+              } else {
+                locationSchema[key] = null;
+              }
+            } else {
+              locationSchema[key] = null;
+            }
+          });
+
+          expected[sectionName] = [locationSchema];
+          // Also add normalized key for lookup (e.g., "Loss History" -> "lossHistory")
+          const normalizedKey = this.normalizeSectionName(sectionName);
+          if (normalizedKey !== sectionName) {
+            expected[normalizedKey] = [locationSchema];
+          }
+        }
+      } else {
+        // Handle object sections (submission, coverage, lossHistory)
+        const sectionObj = sectionDef as Record<string, unknown>;
+        const sectionSchema: Record<string, unknown> = {};
+        Object.keys(sectionObj).forEach((key) => {
+          sectionSchema[key] = null;
+        });
+        expected[sectionName] = sectionSchema;
+        // Also add normalized key for lookup (e.g., "Loss History" -> "lossHistory")
+        const normalizedKey = this.normalizeSectionName(sectionName);
+        if (normalizedKey !== sectionName) {
+          expected[normalizedKey] = sectionSchema;
+        }
+      }
+    });
+
+    return expected;
+  }
+
+  /**
+   * Get the expected schema format (converted from field-schema.json)
+   * This is used by both email reply and submission details page
+   */
+  async getExpectedSchema(): Promise<Record<string, unknown>> {
+    const schema = await this.getSchema();
+    return this.convertToExpectedSchema(schema);
+  }
+
+  /**
    * Update the field schema
    */
   async updateSchema(schema: any): Promise<{ success: boolean; message: string }> {
