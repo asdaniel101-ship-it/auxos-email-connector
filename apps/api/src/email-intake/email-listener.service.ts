@@ -21,8 +21,8 @@ export class EmailListenerService {
     private minioService: MinioService,
     private fieldSchemaService: FieldSchemaService,
   ) {
-    this.email = this.configService.get<string>('GMAIL_EMAIL') || 'auxoreachout@gmail.com';
-    this.password = (this.configService.get<string>('GMAIL_APP_PASSWORD') || 'xgpk xygb ctov epfx').replace(/\s/g, '');
+    this.email = this.configService.get<string>('GMAIL_EMAIL') || 'auxosreachout@gmail.com';
+    this.password = (this.configService.get<string>('GMAIL_APP_PASSWORD') || 'hynl gjjj dshw pjep').replace(/\s/g, '');
     this.initializeSmtp();
   }
 
@@ -604,7 +604,7 @@ export class EmailListenerService {
   }
 
   /**
-   * Get list of new unread messages addressed to auxoreachout@gmail.com
+   * Get list of new unread messages addressed to auxosreachout@gmail.com
    * Also checks recent emails (last 24 hours) in case they were already read
    */
   async getNewMessages(): Promise<number[]> {

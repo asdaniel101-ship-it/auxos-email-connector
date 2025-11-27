@@ -47,7 +47,7 @@ export class EmailIntakeService {
       }
 
       // 2. Check if email is from our own address to prevent infinite loops
-      const systemEmail = this.configService.get<string>('GMAIL_EMAIL') || 'auxoreachout@gmail.com';
+      const systemEmail = this.configService.get<string>('GMAIL_EMAIL') || 'auxosreachout@gmail.com';
       if (emailData.from && emailData.from.toLowerCase().includes(systemEmail.toLowerCase())) {
         this.logger.warn(`Skipping email ${gmailMessageId} - FROM our own address: ${emailData.from}`);
         await this.prisma.emailMessage.update({

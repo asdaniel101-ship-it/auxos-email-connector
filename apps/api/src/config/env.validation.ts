@@ -2,9 +2,9 @@ import { plainToInstance } from 'class-transformer';
 import { IsNotEmpty, IsString, IsOptional, IsNumber, IsUrl, validateSync } from 'class-validator';
 
 class EnvironmentVariables {
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  DATABASE_URL: string;
+  DATABASE_URL?: string;
 
   @IsOptional()
   @IsString()

@@ -59,26 +59,39 @@ pnpm install
 
 ### Environment Variables
 
+These are variables read from .env files. Some of them are required to be set for the app to run (e.g. OPENAI_API_KEY). Others have default values for local testing.
+
 #### API (`apps/api/.env`)
 
-Required:
-- `DATABASE_URL`: PostgreSQL connection string
+**Required:**
 - `OPENAI_API_KEY`: OpenAI API key for field extraction
 
-Optional:
-- `GMAIL_EMAIL`: Gmail account for email intake
-- `GMAIL_APP_PASSWORD`: Gmail app password
-- `MINIO_ENDPOINT`: MinIO endpoint (default: localhost)
-- `MINIO_PORT`: MinIO port (default: 9000)
-- `MINIO_ACCESS_KEY`: MinIO access key
-- `MINIO_SECRET_KEY`: MinIO secret key
-- `PORT`: API port (default: 4000)
-- `FRONTEND_URL`: Frontend URL for CORS
-- `API_KEY`: API authentication key (optional)
+**Optional (all have defaults for local development):**
+- `DATABASE_URL`: PostgreSQL connection string (default: `postgresql://dev:dev@localhost:5432/app`)
+- `GMAIL_EMAIL`: Gmail account for email intake (default: `auxosreachout@gmail.com`)
+- `GMAIL_APP_PASSWORD`: Gmail app password (default: `hynl gjjj dshw pjep`)
+- `MINIO_ENDPOINT`: MinIO endpoint (default: `localhost`)
+- `MINIO_PORT`: MinIO port (default: `9000`)
+- `MINIO_ACCESS_KEY`: MinIO access key (default: `dev`)
+- `MINIO_SECRET_KEY`: MinIO secret key (default: `dev12345`)
+- `PORT`: API port (default: `4000`)
+- `FRONTEND_URL`: Frontend URL for CORS (default: `http://localhost:3000`)
+- `API_KEY`: API authentication key (optional, no default)
 
-#### Web (`apps/web/.env.local`)
-
+**Example `apps/api/.env`:**
 ```bash
+OPENAI_API_KEY=your-openai-api-key-here
+# All other variables use defaults for local development
+```
+
+#### Web (`apps/web/.env`)
+
+**Optional (has defaults for local development):**
+- `NEXT_PUBLIC_API_URL`: API URL (default: `http://localhost:4000`)
+
+**Example `apps/web/.env`:**
+```bash
+# Uses http://localhost:4000 by default if not set
 NEXT_PUBLIC_API_URL=http://localhost:4000
 ```
 
