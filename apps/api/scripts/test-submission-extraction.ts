@@ -40,7 +40,7 @@ async function testSubmissionExtraction() {
     // Parse email text to extract headers and body
     const lines = emailText.split('\n');
     let from = 'test@example.com';
-    let to = 'auxoreachout@gmail.com';
+    let to = 'auxosreachout@gmail.com';
     let subject = 'Test Submission';
     let body = emailText;
     
@@ -58,13 +58,14 @@ async function testSubmissionExtraction() {
       }
     }
     
-    // Load all other files as attachments and store in MinIO
+    // Load all other files as attachments and store in MinIO using the same pattern as EmailListenerService
     const allFiles = fs.readdirSync(testDir).filter(f => 
       f !== emailTextFiles[0] && f !== 'README.md' && !f.startsWith('.')
     );
     
     const attachments: any[] = [];
     const minioClient = minioService.getClient();
+    const testMessageId = `test-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
     
     for (const file of allFiles) {
       const filePath = path.join(testDir, file);
@@ -77,18 +78,23 @@ async function testSubmissionExtraction() {
       else if (ext === '.xlsx' || ext === '.xls') contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       else if (ext === '.docx' || ext === '.doc') contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       
-      // Generate storage key and store in MinIO
-      const storageKey = `test-${Date.now()}-${crypto.randomBytes(8).toString('hex')}-${file}`;
-      await minioClient.putObject('documents', storageKey, content, content.length, {
+      // Use the same storage pattern as EmailListenerService: emails/attachments/{messageId}/{attachmentId}-{filename}
+      const attachmentId = crypto.randomBytes(16).toString('hex');
+      const fileKey = `emails/attachments/${testMessageId}/${attachmentId}-${file}`;
+      
+      // Store in MinIO using the same method as EmailListenerService
+      const sizeBytes = content.length;
+      await minioClient.putObject('documents', fileKey, content, sizeBytes, {
         'Content-Type': contentType,
       });
       
       attachments.push({
-        id: `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: attachmentId,
         filename: file,
         contentType: contentType,
-        size: content.length,
-        storageKey: storageKey, // Required for DocumentParserService
+        size: sizeBytes,
+        sizeBytes: sizeBytes,
+        storageKey: fileKey, // Required for DocumentParserService - matches actual email processing
       });
     }
     
