@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import ConditionalHeader from '@/components/ConditionalHeader';
-import { useAdminAuth } from '@/hooks/useAdminAuth';
 import { getApiUrl } from '@/lib/api-url';
 const API_URL = getApiUrl();
 

@@ -46,28 +46,7 @@ function DebugExtractorsContent() {
   const [error, setError] = useState<string | null>(null);
   const [allSchemaFields, setAllSchemaFields] = useState<Array<{ fieldPath: string; fieldName: string }>>([]);
 
-  const loadSchemaFields = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_URL}/field-schema`);
-      if (response.ok) {
-        const schema = await response.json();
-        const fields = getAllFieldsFromSchema(schema);
-        console.log('Loaded schema fields:', fields.length);
-        setAllSchemaFields(fields);
-      } else {
-        console.error('Failed to load schema fields:', response.status);
-      }
-    } catch (err) {
-      console.error('Error loading schema fields:', err);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadSubmissions();
-    loadSchemaFields();
-  }, [loadSchemaFields]);
-
-  const getAllFieldsFromSchema = (schema: Record<string, unknown>, prefix = ''): Array<{ fieldPath: string; fieldName: string }> => {
+  const getAllFieldsFromSchema = useCallback((schema: Record<string, unknown>, prefix = ''): Array<{ fieldPath: string; fieldName: string }> => {
     const fields: Array<{ fieldPath: string; fieldName: string }> = [];
     
     for (const [key, value] of Object.entries(schema)) {
