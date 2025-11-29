@@ -596,7 +596,10 @@ function FieldSchemaAdminContent() {
         // Check if this is a field definition (has 'type' property and is NOT an array)
         else if ('type' in value && typeof value.type === 'string' && value.type !== 'array') {
           // This is a field - render it
-          fields.push(renderField(key, value as FieldDefinition, fieldPath));
+          const rendered = renderField(key, value as FieldDefinition, fieldPath);
+          if (rendered) {
+            fields.push(rendered);
+          }
         } 
         // Nested object - recurse
         else {
