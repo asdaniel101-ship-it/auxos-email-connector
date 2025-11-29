@@ -157,7 +157,7 @@ function FieldSchemaAdminContent() {
             // Always keep the field even if no DB definition exists
             // This ensures all schema fields are shown
           } else {
-            mergeIntoField(value, fieldPath);
+            mergeIntoField(value as Record<string, unknown>, fieldPath);
           }
         }
       }
