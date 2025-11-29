@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import AuxosLogo from './AuxosLogo';
 import { useAdminAuth } from '@/hooks/useAdminAuth';

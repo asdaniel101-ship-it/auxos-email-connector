@@ -7,7 +7,7 @@ import { getApiUrl } from '@/lib/api-url';
 const API_URL = getApiUrl();
 
 export default function Home() {
-  const { isAuthenticated } = useAdminAuth();
+  // Authentication check is handled by ConditionalHeader component
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', message: '' });
   const [submitting, setSubmitting] = useState(false);

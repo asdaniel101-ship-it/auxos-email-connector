@@ -43,6 +43,7 @@ function FieldSchemaAdminContent() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadData = async () => {
@@ -83,10 +84,10 @@ function FieldSchemaAdminContent() {
       setHasChanges(false);
       
       // Count total fields in schema for display
-      const countAllFields = (obj: any): number => {
+      const countAllFields = (obj: Record<string, unknown>): number => {
         let count = 0;
         if (!obj || typeof obj !== 'object') return count;
-        for (const [key, value] of Object.entries(obj)) {
+        for (const [, value] of Object.entries(obj)) {
           if (value && typeof value === 'object') {
             if ('type' in value && typeof value.type === 'string') {
               count++;
@@ -113,7 +114,7 @@ function FieldSchemaAdminContent() {
   ): FieldData => {
     const merged = JSON.parse(JSON.stringify(schemaData)); // Deep copy
 
-    const mergeIntoField = (obj: any, path: string = '') => {
+    const mergeIntoField = (obj: Record<string, unknown>, path: string = '') => {
       if (!obj || typeof obj !== 'object') return;
 
       if (Array.isArray(obj)) {
@@ -184,7 +185,7 @@ function FieldSchemaAdminContent() {
         whereToLook?: string | null;
       }> = [];
 
-      const extractFields = (obj: any, category: string = 'submission', path: string = '') => {
+      const extractFields = (obj: Record<string, unknown>, category: string = 'submission', path: string = '') => {
         if (!obj || typeof obj !== 'object') return;
 
         if (obj.type === 'array' && obj.items) {
@@ -475,16 +476,16 @@ function FieldSchemaAdminContent() {
                     {dbDef?.businessDescription || field.description}
                   </p>
                 )}
-                {(dbDef?.extractorLogic || (field as any).extractorLogic) && (
+                {(dbDef?.extractorLogic || (field as Record<string, unknown>).extractorLogic) && (
                   <div className="text-xs">
                     <span className="font-medium text-slate-600">Extraction Logic:</span>
-                    <p className="text-slate-500 mt-0.5">{dbDef?.extractorLogic || (field as any).extractorLogic}</p>
+                    <p className="text-slate-500 mt-0.5">{dbDef?.extractorLogic || (field as Record<string, unknown>).extractorLogic}</p>
                   </div>
                 )}
-                {(dbDef?.whereToLook || (field as any).whereToLook) && (
+                {(dbDef?.whereToLook || (field as Record<string, unknown>).whereToLook) && (
                   <div className="text-xs">
                     <span className="font-medium text-slate-600">Where to Look:</span>
-                    <p className="text-slate-500 mt-0.5">{dbDef?.whereToLook || (field as any).whereToLook}</p>
+                    <p className="text-slate-500 mt-0.5">{dbDef?.whereToLook || (field as Record<string, unknown>).whereToLook}</p>
                   </div>
                 )}
               </div>

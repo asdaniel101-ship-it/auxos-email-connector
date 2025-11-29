@@ -281,7 +281,7 @@ function SubmissionPageContent() {
             const itemData = item as Record<string, unknown>;
             
             // Render all fields from schema
-            Object.entries(schemaItem).forEach(([key, _schemaValue]) => {
+            Object.entries(schemaItem).forEach(([key]) => {
               // Skip locationNumber if it's already shown
               if ((sectionName.toLowerCase() === 'locations' || prefix === 'locations') && key === 'locationNumber') {
                 return;

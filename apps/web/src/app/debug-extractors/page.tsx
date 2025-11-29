@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useEffect, useState, useCallback } from 'react';
 import PasswordProtection from '@/components/PasswordProtection';
 import { getApiUrl } from '@/lib/api-url';
 
@@ -24,7 +23,7 @@ interface FieldExtraction {
 
 interface ExtractionResult {
   id: string;
-  data: any;
+  data: Record<string, unknown>;
   llmPrompt: string | null;
   llmResponse: string | null;
   fieldExtractions: FieldExtraction[];
@@ -47,12 +46,7 @@ function DebugExtractorsContent() {
   const [error, setError] = useState<string | null>(null);
   const [allSchemaFields, setAllSchemaFields] = useState<Array<{ fieldPath: string; fieldName: string }>>([]);
 
-  useEffect(() => {
-    loadSubmissions();
-    loadSchemaFields();
-  }, []);
-
-  const loadSchemaFields = async () => {
+  const loadSchemaFields = useCallback(async () => {
     try {
       const response = await fetch(`${API_URL}/field-schema`);
       if (response.ok) {
@@ -66,9 +60,14 @@ function DebugExtractorsContent() {
     } catch (err) {
       console.error('Error loading schema fields:', err);
     }
-  };
+  }, []);
 
-  const getAllFieldsFromSchema = (schema: any, prefix = ''): Array<{ fieldPath: string; fieldName: string }> => {
+  useEffect(() => {
+    loadSubmissions();
+    loadSchemaFields();
+  }, [loadSchemaFields]);
+
+  const getAllFieldsFromSchema = (schema: Record<string, unknown>, prefix = ''): Array<{ fieldPath: string; fieldName: string }> => {
     const fields: Array<{ fieldPath: string; fieldName: string }> = [];
     
     for (const [key, value] of Object.entries(schema)) {
@@ -124,8 +123,7 @@ function DebugExtractorsContent() {
 
     // If schema fields aren't loaded yet, return the database extractions plus placeholders for missing ones
     if (allSchemaFields.length === 0) {
-      // Fallback: use database extractions and create a set to track which fields we have
-      const fieldPaths = new Set(extractionResult.fieldExtractions.map(fe => fe.fieldPath));
+      // Fallback: use database extractions
       const allFields: FieldExtraction[] = [...extractionResult.fieldExtractions];
       
       // This is a fallback - ideally schema fields should be loaded
@@ -360,31 +358,11 @@ function DebugExtractorsContent() {
 
 function FieldDetailsView({
   field,
-  submission,
   extractionResult,
 }: {
   field: FieldExtraction;
-  submission: Submission;
   extractionResult: ExtractionResult;
 }) {
-  const [fieldDef, setFieldDef] = useState<any>(null);
-
-  useEffect(() => {
-    getFieldDefinition(field.fieldName).then(setFieldDef);
-  }, [field.fieldName]);
-
-  const getFieldDefinition = async (fieldName: string) => {
-    try {
-      const response = await fetch(`${API_URL}/field-definitions`);
-      if (response.ok) {
-        const definitions = await response.json();
-        return definitions.find((d: any) => d.fieldName === fieldName);
-      }
-    } catch (err) {
-      console.error('Error loading field definition:', err);
-    }
-    return null;
-  };
 
   // Extract reasoning from LLM response for this specific field
   const getFieldReasoning = () => {
@@ -400,7 +378,7 @@ function FieldDetailsView({
       const response = JSON.parse(extractionResult.llmResponse);
       const fieldExtractions = response.fieldExtractions || [];
       const fieldExtraction = fieldExtractions.find(
-        (fe: any) => fe.fieldPath === field.fieldPath || fe.fieldName === field.fieldName
+        (fe: { fieldPath?: string; fieldName?: string }) => fe.fieldPath === field.fieldPath || fe.fieldName === field.fieldName
       );
       return fieldExtraction;
     } catch {
@@ -456,7 +434,7 @@ function FieldDetailsView({
                 {field.llmReasoning || reasoning?.llmReasoning || 'No reasoning available'}
               </div>
               <div className="text-xs text-slate-500 mt-1 italic">
-                This explains what the LLM looked for, where it searched, and why it extracted this value (or why it couldn't find it).
+                This explains what the LLM looked for, where it searched, and why it extracted this value (or why it couldn&apos;t find it).
               </div>
             </>
           ) : (
