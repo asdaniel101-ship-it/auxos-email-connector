@@ -476,18 +476,24 @@ function FieldSchemaAdminContent() {
                     {dbDef?.businessDescription || field.description}
                   </p>
                 )}
-                {(dbDef?.extractorLogic || (field as unknown as Record<string, unknown>).extractorLogic) && (
-                  <div className="text-xs">
-                    <span className="font-medium text-slate-600">Extraction Logic:</span>
-                    <p className="text-slate-500 mt-0.5">{String(dbDef?.extractorLogic || (field as unknown as Record<string, unknown>).extractorLogic || '')}</p>
-                  </div>
-                )}
-                {(dbDef?.whereToLook || (field as unknown as Record<string, unknown>).whereToLook) && (
-                  <div className="text-xs">
-                    <span className="font-medium text-slate-600">Where to Look:</span>
-                    <p className="text-slate-500 mt-0.5">{String(dbDef?.whereToLook || (field as unknown as Record<string, unknown>).whereToLook || '')}</p>
-                  </div>
-                )}
+                {(() => {
+                  const extractorLogic = dbDef?.extractorLogic || (field as unknown as Record<string, unknown>).extractorLogic;
+                  return extractorLogic && (
+                    <div className="text-xs">
+                      <span className="font-medium text-slate-600">Extraction Logic:</span>
+                      <p className="text-slate-500 mt-0.5">{String(extractorLogic)}</p>
+                    </div>
+                  );
+                })()}
+                {(() => {
+                  const whereToLook = dbDef?.whereToLook || (field as unknown as Record<string, unknown>).whereToLook;
+                  return whereToLook && (
+                    <div className="text-xs">
+                      <span className="font-medium text-slate-600">Where to Look:</span>
+                      <p className="text-slate-500 mt-0.5">{String(whereToLook)}</p>
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               <div className="space-y-3 mt-2">
