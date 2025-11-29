@@ -92,7 +92,7 @@ function FieldSchemaAdminContent() {
             if ('type' in value && typeof value.type === 'string') {
               count++;
             } else if ('type' in value && value.type === 'array' && 'items' in value) {
-              count += countAllFields(value.items);
+              count += countAllFields(value.items as Record<string, unknown>);
             } else {
               count += countAllFields(value);
             }
