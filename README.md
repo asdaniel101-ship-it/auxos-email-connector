@@ -68,7 +68,7 @@ These are variables read from .env files. Some of them are required to be set fo
 
 **Optional (all have defaults for local development):**
 - `DATABASE_URL`: PostgreSQL connection string (default: `postgresql://dev:dev@localhost:5432/app`)
-- `GMAIL_EMAIL`: Gmail account for email intake (default: `auxosreachout@gmail.com`)
+- `GMAIL_EMAIL`: Gmail account for email intake (default: `auxoreachout@gmail.com`)
 - `GMAIL_APP_PASSWORD`: Gmail app password (default: `hynl gjjj dshw pjep`)
 - `MINIO_ENDPOINT`: MinIO endpoint (default: `localhost`)
 - `MINIO_PORT`: MinIO port (default: `9000`)

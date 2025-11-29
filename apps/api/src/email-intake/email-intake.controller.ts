@@ -3,6 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { EmailIntakeService } from './email-intake.service';
 import { EmailListenerService } from './email-listener.service';
+import { FieldExtractionService } from './field-extraction.service';
 import { PrismaService } from '../prisma.service';
 import { MinioService } from '../files/minio.service';
 import { Public } from '../common/decorators/public.decorator';
@@ -13,6 +14,7 @@ export class EmailIntakeController {
   constructor(
     private readonly emailIntakeService: EmailIntakeService,
     private readonly emailListener: EmailListenerService,
+    private readonly fieldExtractionService: FieldExtractionService,
     private readonly prisma: PrismaService,
     private readonly minioService: MinioService,
   ) {}
@@ -296,6 +298,14 @@ export class EmailIntakeController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  @Get('debug/enhanced-schema')
+  @ApiOperation({ summary: 'Debug: Get the enhanced schema with field definitions that will be sent to LLM' })
+  @ApiResponse({ status: 200, description: 'Enhanced schema with field definitions' })
+  async getEnhancedSchema() {
+    // Access the private method via a public method we'll add to FieldExtractionService
+    return this.fieldExtractionService.getEnhancedSchemaForDebug();
   }
 }
 

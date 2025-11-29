@@ -30,6 +30,9 @@ export default function ConditionalHeader() {
                 <Link href="/debug-emails" className="hover:text-slate-900 transition-colors">
                   Debug Emails
                 </Link>
+                <Link href="/debug-extractors" className="hover:text-slate-900 transition-colors">
+                  Debug Extractors
+                </Link>
                 <Link href="/upload-eml" className="hover:text-slate-900 transition-colors">
                   Upload .eml
                 </Link>
@@ -50,6 +53,9 @@ export default function ConditionalHeader() {
               <Link href="/debug-emails" className="hover:text-slate-900 transition-colors">
                 Debug Emails
               </Link>
+              <Link href="/debug-extractors" className="hover:text-slate-900 transition-colors">
+                Debug Extractors
+              </Link>
               <Link href="/upload-eml" className="hover:text-slate-900 transition-colors">
                 Upload .eml
               </Link>
@@ -68,24 +74,7 @@ export default function ConditionalHeader() {
 }
 
 function AdminLoginButton() {
-  const [showLogin, setShowLogin] = useState(false);
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const { isAuthenticated, login, logout } = useAdminAuth();
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (login(password)) {
-      setShowLogin(false);
-      setPassword('');
-      // Refresh to update navigation
-      window.location.reload();
-    } else {
-      setError('Incorrect password. Please try again.');
-      setPassword('');
-    }
-  };
+  const { isAuthenticated, logout } = useAdminAuth();
 
   if (isAuthenticated) {
     return (
@@ -105,65 +94,11 @@ function AdminLoginButton() {
   }
 
   return (
-    <>
-      <button
-        onClick={() => setShowLogin(true)}
-        className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
-      >
-        Admin Login
-      </button>
-      {showLogin && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-8">
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">Admin Login</h2>
-            <p className="text-slate-600 mb-6">Enter the admin password to access admin features.</p>
-            
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label htmlFor="admin-password" className="block text-sm font-medium text-slate-700 mb-1">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  id="admin-password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setError('');
-                  }}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
-                  placeholder="Enter password"
-                  autoFocus
-                />
-              </div>
-              
-              {error && (
-                <div className="text-red-600 text-sm">{error}</div>
-              )}
-              
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="submit"
-                  className="flex-1 px-6 py-3 bg-slate-900 text-white font-semibold rounded-lg hover:bg-slate-800 transition-colors"
-                >
-                  Login
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowLogin(false);
-                    setPassword('');
-                    setError('');
-                  }}
-                  className="px-6 py-3 border border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </>
+    <Link
+      href="/admin/login"
+      className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+    >
+      Admin Login
+    </Link>
   );
 }

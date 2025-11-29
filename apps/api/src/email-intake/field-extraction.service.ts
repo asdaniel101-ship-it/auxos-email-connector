@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma.service';
 import { DocumentParserService } from './document-parser.service';
@@ -13,11 +13,22 @@ try {
   // OpenAI not installed
 }
 
+interface FieldDefinitionInfo {
+  fieldName: string;
+  category: string;
+  fieldType: string;
+  businessDescription?: string | null;
+  extractorLogic?: string | null;
+  whereToLook?: string | null;
+  documentSources?: string[];
+}
+
 @Injectable()
-export class FieldExtractionService {
+export class FieldExtractionService implements OnModuleInit {
   private readonly logger = new Logger(FieldExtractionService.name);
   private openai: any;
   private fieldSchema: any;
+  private fieldDefinitions: Map<string, FieldDefinitionInfo> = new Map();
 
   constructor(
     private configService: ConfigService,
@@ -30,15 +41,18 @@ export class FieldExtractionService {
     } else {
       this.openai = new OpenAI({ apiKey });
     }
+  }
 
-    // Load field schema
-    this.loadFieldSchema();
+  async onModuleInit() {
+    // Load field schema and definitions at startup
+    await this.loadFieldSchema();
+    await this.loadFieldDefinitions();
   }
 
   /**
-   * Load field schema from JSON file
+   * Load field schema from JSON file (for structure)
    */
-  private loadFieldSchema() {
+  private async loadFieldSchema() {
     try {
       const schemaPath = path.join(__dirname, '../../field-schema.json');
       if (fs.existsSync(schemaPath)) {
@@ -51,6 +65,89 @@ export class FieldExtractionService {
       this.logger.error('Error loading field schema:', error);
       this.fieldSchema = this.getDefaultSchema();
     }
+  }
+
+  /**
+   * Load field definitions from database (businessDescription, extractorLogic, whereToLook)
+   */
+  private async loadFieldDefinitions() {
+    try {
+      const definitions = await this.prisma.fieldDefinition.findMany();
+      this.fieldDefinitions.clear();
+      
+      for (const def of definitions) {
+        this.fieldDefinitions.set(def.fieldName, {
+          fieldName: def.fieldName,
+          category: def.category,
+          fieldType: def.fieldType,
+          businessDescription: def.businessDescription,
+          extractorLogic: def.extractorLogic,
+          whereToLook: def.whereToLook,
+          documentSources: def.documentSources,
+        });
+      }
+      
+      this.logger.log(`Loaded ${this.fieldDefinitions.size} field definitions from database`);
+    } catch (error) {
+      this.logger.error('Error loading field definitions from database:', error);
+      // Continue with empty map - will use schema defaults
+    }
+  }
+
+  /**
+   * Refresh field definitions from database (call after updates)
+   */
+  async refreshFieldDefinitions() {
+    await this.loadFieldDefinitions();
+  }
+
+  /**
+   * Get enhanced schema for debugging (exposes private method)
+   */
+  getEnhancedSchemaForDebug() {
+    const enhancedSchema = this.buildEnhancedSchema();
+    const fieldsWithLogic = this.countFieldsWithExtractorLogic(enhancedSchema);
+    
+    // Get a sample of fields with extractor logic
+    const sampleFields: any[] = [];
+    const collectSampleFields = (obj: any, path: string = '') => {
+      if (!obj || typeof obj !== 'object' || sampleFields.length >= 5) return;
+      
+      if (obj.type === 'array' && obj.items) {
+        collectSampleFields(obj.items, path);
+        return;
+      }
+      
+      for (const [key, value] of Object.entries(obj)) {
+        if (sampleFields.length >= 5) break;
+        const fieldPath = path ? `${path}.${key}` : key;
+        
+        if (value && typeof value === 'object' && 'type' in value && typeof value.type === 'string') {
+          const fieldValue = value as any;
+          if (fieldValue.extractorLogic) {
+            sampleFields.push({
+              fieldPath,
+              fieldName: key,
+              hasBusinessDescription: !!fieldValue.businessDescription,
+              hasExtractorLogic: !!fieldValue.extractorLogic,
+              hasWhereToLook: !!fieldValue.whereToLook,
+              extractorLogicPreview: fieldValue.extractorLogic.substring(0, 100) + '...',
+            });
+          }
+        } else if (value && typeof value === 'object') {
+          collectSampleFields(value, fieldPath);
+        }
+      }
+    };
+    
+    collectSampleFields(enhancedSchema);
+    
+    return {
+      totalFieldsWithExtractorLogic: fieldsWithLogic,
+      totalFieldDefinitionsLoaded: this.fieldDefinitions.size,
+      sampleFields,
+      fullSchema: enhancedSchema,
+    };
   }
 
   /**
@@ -69,7 +166,10 @@ export class FieldExtractionService {
       highlightedText?: string;
       chunkStartIndex?: number;
       chunkEndIndex?: number;
+      llmReasoning?: string;
     }>;
+    llmPrompt?: string | null;
+    llmResponse?: string | null;
   }> {
     this.logger.log('Starting field extraction...');
 
@@ -78,6 +178,15 @@ export class FieldExtractionService {
       emailData.attachments || [],
       documentClassifications,
     );
+
+    // Log document parsing summary for debugging
+    this.logger.log('Document parsing summary:');
+    for (const [docType, text] of parsedTexts.entries()) {
+      const charCount = text.length;
+      const preview = text.substring(0, 200).replace(/\n/g, ' ');
+      this.logger.log(`  ${docType}: ${charCount} characters - "${preview}..."`);
+    }
+    this.logger.log(`Email body length: ${(emailData.body || '').length} characters`);
 
     // Build a map of attachment ID to full parsed text
     // Note: parseAllDocuments groups by docType, so we need to parse individually for proper mapping
@@ -97,96 +206,137 @@ export class FieldExtractionService {
 
     // Build extraction prompt with actual parsed text
     const extractionPrompt = this.buildExtractionPrompt(emailData, documentClassifications, parsedTexts);
-
+    
     if (!this.openai) {
       throw new Error('OpenAI API not configured');
     }
 
     try {
-      const response = await this.openai.chat.completions.create({
-        model: this.configService.get<string>('OPENAI_MODEL') || 'gpt-4o',
-        messages: [
-          {
-            role: 'system',
-            content: this.buildSystemPromptWithChunks(),
-          },
-          {
-            role: 'user',
-            content: extractionPrompt,
-          },
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0.1,
-      });
-
-      const responseData = JSON.parse(response.choices[0].message.content || '{}');
-      const extractedData = responseData.data || responseData;
+      // NEW APPROACH: Extract each field separately with its own LLM call
+      // Each field gets: businessDescription, extractorLogic, whereToLook, and all documents
+      this.logger.log('Starting per-field extraction: One LLM call per field');
       
-      // Always generate field extractions for ALL fields to ensure every field has a source
-      // The LLM might only provide extractions for fields with values, but we want ALL fields
-      const llmFieldExtractions = responseData.fieldExtractions || [];
-      const allFieldExtractions = await this.generateFieldExtractions(
-        extractedData, 
-        emailData, 
-        attachmentTextMap, 
-        documentClassifications
-      );
+      const allSchemaFields = this.getAllSchemaFields();
+      const extractedData: any = {
+        submission: {},
+        locations: [],
+        coverage: {},
+        lossHistory: {},
+      };
       
-      // Merge LLM extractions with generated ones, preferring LLM chunks if available
-      const mergedExtractions = new Map<string, typeof allFieldExtractions[0]>();
+      const fieldExtractions: Array<{
+        fieldPath: string;
+        fieldName: string;
+        fieldValue: any;
+        source: string;
+        documentId?: string;
+        documentChunk?: string;
+        highlightedText?: string;
+        chunkStartIndex?: number;
+        chunkEndIndex?: number;
+        llmReasoning?: string;
+      }> = [];
       
-      // First, add all generated extractions (covers ALL fields)
-      for (const fe of allFieldExtractions) {
-        mergedExtractions.set(fe.fieldPath, fe);
-      }
+      const fullResponses: string[] = [];
       
-      // Then, override with LLM extractions if they have better chunks
-      for (const llmFe of llmFieldExtractions) {
-        const existing = mergedExtractions.get(llmFe.fieldPath);
-        if (existing) {
-          // Prefer LLM extraction if it has a chunk and existing doesn't
-          if (llmFe.documentChunk && !existing.documentChunk) {
-            mergedExtractions.set(llmFe.fieldPath, llmFe);
-          } else if (llmFe.documentChunk && existing.documentChunk) {
-            // Both have chunks, prefer LLM one
-            mergedExtractions.set(llmFe.fieldPath, llmFe);
-          }
-          // If LLM doesn't have chunk but existing does, keep existing (don't override)
-        } else {
-          // LLM provided an extraction we don't have
-          // If it doesn't have a chunk and source is email_body, try to create one
-          if (!llmFe.documentChunk && llmFe.source === 'email_body' && emailData.body) {
-            const valueStr = String(llmFe.fieldValue || '');
-            const bodyLower = emailData.body.toLowerCase();
-            let valueIndex = valueStr ? bodyLower.indexOf(valueStr.toLowerCase()) : -1;
+      // Extract fields in parallel batches to speed up processing while respecting rate limits
+      const BATCH_SIZE = 5; // Process 5 fields in parallel
+      const DELAY_BETWEEN_BATCHES = 1000; // 1 second delay between batches
+      
+      for (let batchStart = 0; batchStart < allSchemaFields.length; batchStart += BATCH_SIZE) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE, allSchemaFields.length);
+        const batch = allSchemaFields.slice(batchStart, batchEnd);
+        
+        this.logger.log(`Processing batch ${Math.floor(batchStart / BATCH_SIZE) + 1}/${Math.ceil(allSchemaFields.length / BATCH_SIZE)}: fields ${batchStart + 1}-${batchEnd}`);
+        
+        // Process batch in parallel
+        const batchPromises = batch.map(async (schemaField, index) => {
+          const fieldIndex = batchStart + index;
+          this.logger.log(`Extracting field ${fieldIndex + 1}/${allSchemaFields.length}: ${schemaField.path}`);
+          
+          try {
+            const fieldResult = await this.extractSingleField(
+              schemaField,
+              emailData,
+              documentClassifications,
+              parsedTexts
+            );
             
-            if (valueIndex === -1) {
-              // Try to find field name
-              const fieldNamePattern = new RegExp(
-                this.escapeRegex(llmFe.fieldName.replace(/([A-Z])/g, ' $1').toLowerCase()),
-                'i'
-              );
-              const fieldNameMatch = emailData.body.match(fieldNamePattern);
-              if (fieldNameMatch && fieldNameMatch.index !== undefined) {
-                valueIndex = fieldNameMatch.index;
-              }
+            return { success: true, field: schemaField, result: fieldResult };
+          } catch (error: any) {
+            this.logger.warn(`Error extracting field ${schemaField.path}: ${error.message}`);
+            return {
+              success: false,
+              field: schemaField,
+              error: error.message,
+              isRateLimit: error?.status === 429,
+            };
+          }
+        });
+        
+        // Wait for batch to complete
+        const batchResults = await Promise.all(batchPromises);
+        
+        // Process results
+        for (const batchResult of batchResults) {
+          if (batchResult.success && batchResult.result) {
+            // Store the extracted value
+            this.setValueByPath(extractedData, batchResult.field.path, batchResult.result.fieldValue);
+            
+            // Add to field extractions
+            fieldExtractions.push(batchResult.result);
+            
+            if (batchResult.result.llmResponse) {
+              fullResponses.push(`${batchResult.field.path}: ${batchResult.result.llmResponse}`);
             }
+          } else {
+            // Add null extraction for failed fields
+            fieldExtractions.push({
+              fieldPath: batchResult.field.path,
+              fieldName: batchResult.field.name,
+              fieldValue: null,
+              source: 'other',
+              llmReasoning: `Error during extraction: ${batchResult.error}`,
+            });
             
-            const chunkIndex = valueIndex !== -1 ? valueIndex : 0;
-            const chunk = this.extractChunk(emailData.body, chunkIndex, valueStr.length || 200);
-            llmFe.documentChunk = chunk.text;
-            llmFe.highlightedText = chunk.highlighted;
-            llmFe.chunkStartIndex = chunk.startIndex;
-            llmFe.chunkEndIndex = chunk.endIndex;
+            // If rate limit, wait longer before next batch
+            if (batchResult.isRateLimit && batchStart + BATCH_SIZE < allSchemaFields.length) {
+              const waitTime = 5000; // Wait 5 seconds on rate limit
+              this.logger.warn(`Rate limit encountered, waiting ${waitTime}ms before next batch`);
+              await new Promise(resolve => setTimeout(resolve, waitTime));
+            }
           }
-          mergedExtractions.set(llmFe.fieldPath, llmFe);
+        }
+        
+        // Delay between batches (except for last batch)
+        if (batchEnd < allSchemaFields.length) {
+          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
         }
       }
       
-      const fieldExtractions = Array.from(mergedExtractions.values());
-      this.logger.log(`Field extraction completed: ${fieldExtractions.length} fields with sources`);
+      const fullResponse = fullResponses.join('\n\n');
+      const fullPrompt = `Per-field extraction: ${allSchemaFields.length} separate LLM calls, one per field`;
 
-      return { data: extractedData, fieldExtractions };
+      // Log extraction summary
+      const extractedCount = fieldExtractions.filter(fe => 
+        fe.fieldValue !== null && fe.fieldValue !== undefined && fe.fieldValue !== ''
+      ).length;
+      const nullCount = fieldExtractions.length - extractedCount;
+      
+      this.logger.log(`Per-field extraction completed: ${fieldExtractions.length} fields processed`);
+      this.logger.log(`  ✓ Extracted: ${extractedCount} fields`);
+      this.logger.log(`  ✗ Null/Missing: ${nullCount} fields`);
+      
+      if (nullCount > 0) {
+        this.logger.warn(`Warning: ${nullCount} fields were not extracted. Check document parsing and field definitions.`);
+      }
+
+      return { 
+        data: extractedData, 
+        fieldExtractions: fieldExtractions,
+        llmPrompt: fullPrompt,
+        llmResponse: fullResponse,
+      };
     } catch (error: any) {
       this.logger.error('Error in field extraction:', error);
       
@@ -229,13 +379,163 @@ For each field, return either a concrete value or null if not present.`;
   }
 
   /**
+   * Build system prompt for Pass 1: Pure data extraction only (no fieldExtractions, no reasoning)
+   * Uses clean output template instead of JSON Schema
+   */
+  private buildSystemPromptDataOnly(): string {
+    // Build output template (clean shape with null placeholders)
+    const outputTemplate = this.buildOutputTemplate();
+    
+    // Build field definitions reference (for extraction guidance)
+    const fieldDefinitions = this.buildFieldDefinitionsReference();
+    
+    let prompt = `You are an expert at extracting structured commercial property insurance submission data from emails and documents.
+
+Your task is to extract data and return ONLY valid JSON matching this exact structure:
+${JSON.stringify(outputTemplate, null, 2)}
+
+Use this object as a template. Replace nulls with extracted values and keep the exact same property names and nesting.
+
+FIELD EXTRACTION GUIDELINES:
+${fieldDefinitions}
+
+CRITICAL EXTRACTION STRATEGY:
+For each field, follow this search order:
+1. FIRST: Check the document sections specified in "Where to Look" (if provided)
+   - These are the most likely places to find the value
+   - Search thoroughly in these sections first
+2. IF NOT FOUND: Then search ALL other available document sections
+   - Don't give up after checking "Where to Look" sections
+   - Continue searching in all other document types (acord, sov, loss_run, schedule, supplemental, email_body, other)
+   - The value might be in an unexpected location
+
+Example: If "Where to Look" says "SOV, ACORD" but you don't find the value there, still check:
+- email_body
+- loss_run
+- schedule
+- supplemental
+- other
+
+IMPORTANT INSTRUCTIONS:
+1. Return ONLY the JSON object matching the template structure above. Do not include any explanations, comments, or additional fields.
+2. Use null for any field you cannot find in ANY of the provided content after searching all document sections.
+3. For arrays (locations, buildings), create array items based on what you find in the documents. If there's one location with one building, create locations[0] with buildings[0].
+4. Keep property names exactly as shown in the template - do not change or add any keys.
+5. The section names in the content (between ===) indicate document types. Search all sections systematically.
+
+Return valid JSON only. No explanations, no reasoning, no fieldExtractions - just the data object.`;
+
+    return prompt;
+  }
+
+  /**
+   * Build field definitions reference for extraction guidance
+   * This provides businessDescription, extractorLogic, and whereToLook without the schema structure
+   */
+  private buildFieldDefinitionsReference(): string {
+    const definitions: string[] = [];
+    
+    const addFieldDefinition = (schemaObj: any, path: string = '') => {
+      if (!schemaObj || typeof schemaObj !== 'object') return;
+
+      if (schemaObj.type === 'array' && schemaObj.items) {
+        addFieldDefinition(schemaObj.items, path);
+        return;
+      }
+
+      for (const [key, value] of Object.entries(schemaObj)) {
+        if (!value || typeof value !== 'object') continue;
+
+        const fieldPath = path ? `${path}.${key}` : key;
+
+        if ('type' in value && typeof value.type === 'string') {
+          if (value.type === 'array' && 'items' in value) {
+            addFieldDefinition(value.items, `${fieldPath}[0]`);
+          } else {
+            // This is a field - add its definition
+            const fieldDef = this.fieldDefinitions.get(key);
+            if (fieldDef) {
+              let defText = `\n${fieldPath}:`;
+              if (fieldDef.businessDescription) {
+                defText += `\n  Business Description: ${fieldDef.businessDescription}`;
+              }
+              if (fieldDef.extractorLogic) {
+                defText += `\n  Extraction Logic: ${fieldDef.extractorLogic}`;
+              }
+              if (fieldDef.whereToLook) {
+                defText += `\n  Where to Look: ${fieldDef.whereToLook}`;
+              }
+              definitions.push(defText);
+            }
+          }
+        } else {
+          addFieldDefinition(value, fieldPath);
+        }
+      }
+    };
+
+    // Process each section
+    if (this.fieldSchema.submission) {
+      addFieldDefinition(this.fieldSchema.submission, 'submission');
+    }
+    if (this.fieldSchema.locations) {
+      addFieldDefinition(this.fieldSchema.locations, 'locations[0]');
+    }
+    if (this.fieldSchema.coverage) {
+      addFieldDefinition(this.fieldSchema.coverage, 'coverage');
+    }
+    if (this.fieldSchema.lossHistory) {
+      addFieldDefinition(this.fieldSchema.lossHistory, 'lossHistory');
+    }
+
+    return definitions.join('\n');
+  }
+
+  /**
    * Build system prompt that requests document chunks and highlights
+   * Includes field definitions with businessDescription, extractorLogic, and whereToLook
+   * This is the OLD approach - kept for backward compatibility or Pass 2
    */
   private buildSystemPromptWithChunks(): string {
-    return `You are an expert at extracting structured commercial property insurance submission data from emails and documents.
+    // Build enhanced schema with field definitions
+    const enhancedSchema = this.buildEnhancedSchema();
+    
+    // Log how many fields have extractor logic for debugging
+    const fieldsWithLogic = this.countFieldsWithExtractorLogic(enhancedSchema);
+    this.logger.log(`Enhanced schema includes ${fieldsWithLogic} fields with extractorLogic`);
+    
+    let prompt = `You are an expert at extracting structured commercial property insurance submission data from emails and documents.
 
 Extract all fields from the provided content according to this schema:
-${JSON.stringify(this.fieldSchema, null, 2)}
+${JSON.stringify(enhancedSchema, null, 2)}
+
+IMPORTANT: For each field in the schema, pay special attention to:
+- businessDescription: This explains what the field represents and its business context
+- extractorLogic: Follow these detailed instructions on HOW to extract this specific field
+- whereToLook: This tells you WHICH document types to search first (e.g., "acord", "sov", "email_body", "loss_run"). 
+  When you see whereToLook for a field, prioritize searching in those specific document sections below.
+  Document sections are labeled with section names that match the source values exactly (e.g., "=== acord ===", "=== email_body ===").
+
+CRITICAL EXTRACTION GUIDELINES:
+1. For fields with whereToLook including "email body" or "email signature": 
+   - Search the ENTIRE email body thoroughly, including signatures at the bottom
+   - Look for values even if they're not explicitly labeled (e.g., phone numbers, addresses in signatures)
+   - Check for patterns like "Name | Title | Phone | Email" in signatures
+   - Look for addresses mentioned in the narrative text, not just labeled sections
+
+2. For fields like brokerEmail: Check EMAIL METADATA section first (From field), then email body signature
+
+3. For fields like brokerPhone, mailingAddress: Even if not explicitly labeled, search for:
+   - Phone: patterns like (XXX) XXX-XXXX, XXX-XXX-XXXX, or XXX.XXX.XXXX
+   - Address: lines with street numbers, city names, state abbreviations, ZIP codes
+
+4. Be thorough: If a field's whereToLook says "email body", search the ENTIRE email body carefully, including:
+   - Signature blocks
+   - Narrative text
+   - Any contact information
+   - Addresses mentioned in context
+
+Use the extractorLogic for each field as your primary guide for extraction, and use whereToLook to know which document sections to prioritize.
 
 Return a JSON object with this structure:
 {
@@ -251,10 +551,22 @@ Return a JSON object with this structure:
       "fieldName": "namedInsured",
       "fieldValue": "Harborview Manufacturing, LLC",
       "source": "acord",
-      "documentChunk": "Named Insured: Harborview Manufacturing, LLC\nAddress: 1250 Harbor Park Drive",
-      "highlightedText": "Named Insured: <mark>Harborview Manufacturing, LLC</mark>\nAddress: 1250 Harbor Park Drive",
+      "documentChunk": "Named Insured: Harborview Manufacturing, LLC\\nAddress: 1250 Harbor Park Drive",
+      "highlightedText": "Named Insured: <mark>Harborview Manufacturing, LLC</mark>\\nAddress: 1250 Harbor Park Drive",
       "chunkStartIndex": 150,
-      "chunkEndIndex": 250
+      "chunkEndIndex": 250,
+      "llmReasoning": "Found this value in the ACORD 125 form under the 'Named Insured' field. The value was clearly labeled and matched the businessDescription requirement for a legal entity name. I searched the ACORD forms first as indicated in whereToLook, and found an exact match."
+    },
+    {
+      "fieldPath": "submission.submissionId",
+      "fieldName": "submissionId",
+      "fieldValue": null,
+      "source": "other",
+      "documentChunk": null,
+      "highlightedText": null,
+      "chunkStartIndex": null,
+      "chunkEndIndex": null,
+      "llmReasoning": "I searched through all provided documents (ACORD forms, email body, SOV) for any submission ID or reference number. I looked for patterns like 'Submission ID:', 'Ref:', 'Submission #', but found no such identifier. Based on the extractorLogic, this field should be programmatically generated, not extracted from documents, so null is the expected value here."
     }
   ]
 }
@@ -263,13 +575,208 @@ For each extracted field:
 - fieldPath: The JSON path (e.g., "submission.namedInsured", "locations[0].buildings[0].riskAddress")
 - fieldName: The field name without path
 - fieldValue: The extracted value (null if not found)
-- source: "email_body", "acord", "sov", "loss_run", "schedule", "supplemental", or "other"
-- documentChunk: A 200-500 character excerpt from the source document containing the value
+- source: Must match one of the document section labels: "email_body", "acord", "sov", "loss_run", "schedule", "supplemental", or "other". 
+  Use the source that matches the document section where you found the value (e.g., if found in "=== ACORD DOCUMENTS (source: "acord") ===", use source: "acord").
+- documentChunk: A 200-500 character excerpt from the source document containing the value. 
+  Make sure to extract from the document section that matches the field's whereToLook instruction.
 - highlightedText: The same chunk with the extracted value wrapped in <mark> tags
 - chunkStartIndex: Character position where chunk starts in original document (approximate)
 - chunkEndIndex: Character position where chunk ends in original document (approximate)
+- llmReasoning: A brief explanation (1-3 sentences) of HOW you found this value, WHAT you looked for, WHERE you found it, and WHY you chose this specific value. Include your thought process, any alternatives you considered, and your confidence level. For null values, explain what you searched for and why you couldn't find it.
 
-Include fieldExtractions for ALL fields in the data structure, even if the value is null. This ensures every field has a source attribution.`;
+CRITICAL: You MUST include fieldExtractions for EVERY SINGLE FIELD in the schema, regardless of whether you found a value or not.
+
+For EVERY field in the schema (including ALL fields with null values in the data object), you MUST provide a complete fieldExtraction entry with:
+- fieldPath: The full path (e.g., "submission.submissionId", "locations[0].buildings[0].riskAddress")
+- fieldName: The field name without path
+- fieldValue: The extracted value OR null if not found
+- source: The document type where you searched (even if not found, indicate where you looked)
+- llmReasoning: REQUIRED for every field - explain your search process
+
+For fields with null values, your llmReasoning MUST explain:
+1. What you searched for (describe the field based on businessDescription and extractorLogic)
+2. Where you looked (list the specific document types you checked based on whereToLook)
+3. What patterns or keywords you searched for
+4. Why you couldn't find it (what was missing, what you expected to see, any similar values you considered but rejected)
+
+Example for a null field:
+"llmReasoning": "I searched for a submission ID in the email body and all ACORD forms, looking for patterns like 'Submission ID:', 'Ref #', or 'Submission Number:'. I checked the email subject line and headers, and reviewed all document headers. No submission ID was found in any of the provided documents. Based on the extractorLogic, this field should be programmatically generated rather than extracted from documents."
+
+DO NOT skip any fields. Every field in the schema must have a corresponding entry in fieldExtractions with reasoning.`;
+
+    return prompt;
+  }
+
+  /**
+   * Build enhanced schema with field definitions (businessDescription, extractorLogic, whereToLook)
+   * This is used for the old schema-based approach - kept for backward compatibility
+   */
+  private buildEnhancedSchema(): any {
+    const enhanced = JSON.parse(JSON.stringify(this.fieldSchema)); // Deep copy
+    
+    // Helper to recursively add field definitions
+    const addFieldDefinitions = (obj: any, path: string = '') => {
+      if (!obj || typeof obj !== 'object') return;
+      
+      if (Array.isArray(obj)) {
+        obj.forEach((item, index) => {
+          if (typeof item === 'object') {
+            addFieldDefinitions(item, `${path}[${index}]`);
+          }
+        });
+        return;
+      }
+      
+      // Check if this is an array type definition
+      if (obj.type === 'array' && obj.items) {
+        addFieldDefinitions(obj.items, path);
+        return;
+      }
+      
+      // Process object fields
+      for (const [key, value] of Object.entries(obj)) {
+        const fieldPath = path ? `${path}.${key}` : key;
+        
+        if (value && typeof value === 'object') {
+          if ('type' in value && typeof value.type === 'string') {
+            // This is a field definition - enhance it with database info
+            const fieldDef = this.fieldDefinitions.get(key);
+            if (fieldDef) {
+              // Type assertion to allow adding properties
+              const fieldValue = value as any;
+              if (fieldDef.businessDescription) {
+                fieldValue.businessDescription = fieldDef.businessDescription;
+              }
+              if (fieldDef.extractorLogic) {
+                fieldValue.extractorLogic = fieldDef.extractorLogic;
+              }
+              if (fieldDef.whereToLook) {
+                fieldValue.whereToLook = fieldDef.whereToLook;
+                this.logger.debug(`Enhanced field "${key}" with whereToLook: ${fieldDef.whereToLook}`);
+              } else if (fieldValue.whereToLook) {
+                // Keep existing whereToLook from JSON if no DB override
+              }
+              // Log when we enhance a field with extractor logic
+              if (fieldDef.extractorLogic) {
+                this.logger.debug(`Enhanced field "${key}" with extractorLogic (${fieldDef.extractorLogic.substring(0, 50)}...)`);
+              }
+            } else {
+              // Log when a field doesn't have a database definition
+              this.logger.debug(`Field "${key}" at path "${fieldPath}" not found in fieldDefinitions map`);
+            }
+          } else {
+            // Recurse into nested objects
+            addFieldDefinitions(value, fieldPath);
+          }
+        }
+      }
+    };
+    
+    addFieldDefinitions(enhanced);
+    return enhanced;
+  }
+
+  /**
+   * Build clean output template from schema (no JSON Schema syntax, just the final shape with null placeholders)
+   * This is the new approach - provides a clean template the model can fill in
+   */
+  private buildOutputTemplate(): any {
+    const template: any = {
+      submission: {},
+      locations: [],
+      coverage: {},
+      lossHistory: {},
+    };
+
+    // Helper to convert schema to output template
+    const convertToTemplate = (schemaObj: any, outputObj: any): void => {
+      if (!schemaObj || typeof schemaObj !== 'object') return;
+
+      // Handle array type definitions at root level
+      if (schemaObj.type === 'array' && schemaObj.items) {
+        // For arrays, create a single item template
+        const itemTemplate: any = {};
+        convertToTemplate(schemaObj.items, itemTemplate);
+        outputObj.push(itemTemplate);
+        return;
+      }
+
+      // Process object properties
+      for (const [key, value] of Object.entries(schemaObj)) {
+        if (!value || typeof value !== 'object') continue;
+
+        if ('type' in value && typeof value.type === 'string') {
+          if (value.type === 'array' && 'items' in value) {
+            // Array field - create array with one item template
+            const itemTemplate: any = {};
+            convertToTemplate(value.items, itemTemplate);
+            outputObj[key] = [itemTemplate];
+          } else {
+            // Regular field - set to null as placeholder
+            outputObj[key] = null;
+          }
+        } else {
+          // Nested object - recurse
+          if (!outputObj[key]) {
+            outputObj[key] = {};
+          }
+          convertToTemplate(value, outputObj[key]);
+        }
+      }
+    };
+
+    // Convert each section
+    if (this.fieldSchema.submission) {
+      convertToTemplate(this.fieldSchema.submission, template.submission);
+    }
+    if (this.fieldSchema.locations && this.fieldSchema.locations.type === 'array' && this.fieldSchema.locations.items) {
+      convertToTemplate(this.fieldSchema.locations, template.locations);
+    }
+    if (this.fieldSchema.coverage) {
+      convertToTemplate(this.fieldSchema.coverage, template.coverage);
+    }
+    if (this.fieldSchema.lossHistory) {
+      convertToTemplate(this.fieldSchema.lossHistory, template.lossHistory);
+    }
+
+    return template;
+  }
+
+  /**
+   * Count fields with extractor logic for logging/debugging
+   */
+  private countFieldsWithExtractorLogic(schema: any): number {
+    let count = 0;
+    
+    const countInObject = (obj: any): void => {
+      if (!obj || typeof obj !== 'object') return;
+      
+      if (Array.isArray(obj)) {
+        obj.forEach(item => countInObject(item));
+        return;
+      }
+      
+      if (obj.type === 'array' && obj.items) {
+        countInObject(obj.items);
+        return;
+      }
+      
+      for (const [key, value] of Object.entries(obj)) {
+        if (value && typeof value === 'object') {
+          if ('type' in value && typeof value.type === 'string') {
+            // This is a field definition
+            if ((value as any).extractorLogic) {
+              count++;
+            }
+          } else {
+            countInObject(value);
+          }
+        }
+      }
+    };
+    
+    countInObject(schema);
+    return count;
   }
 
   /**
@@ -280,33 +787,554 @@ Include fieldExtractions for ALL fields in the data structure, even if the value
     documentClassifications: Map<string, string>,
     parsedTexts: Map<string, string>,
   ): string {
-    let prompt = `=== EMAIL BODY ===\n${emailData.body || 'No email body'}\n\n`;
+    // Log what documents are being included
+    const availableDocTypes = Array.from(parsedTexts.keys());
+    this.logger.debug(`Building extraction prompt with document types: ${availableDocTypes.join(', ')}`);
+    // Include email metadata and body - use "email_body" as the source label
+    let prompt = `=== email_body ===\n`;
+    prompt += `From: ${emailData.from || 'Not available'}\n`;
+    prompt += `To: ${Array.isArray(emailData.to) ? emailData.to.join(', ') : emailData.to || 'Not available'}\n`;
+    prompt += `Subject: ${emailData.subject || 'Not available'}\n`;
+    prompt += `Date: ${emailData.receivedAt || emailData.date || 'Not available'}\n\n`;
+    prompt += `${emailData.body || 'No email body'}\n\n`;
 
-    // Add parsed documents grouped by type
+    // Add parsed documents grouped by type - section name matches source value exactly
     const docTypes = ['acord', 'sov', 'loss_run', 'schedule', 'supplemental', 'other'];
     
     for (const docType of docTypes) {
       const text = parsedTexts.get(docType);
       if (text) {
-        prompt += `=== ${docType.toUpperCase()} DOCUMENTS ===\n${text.substring(0, 50000)}\n\n`; // Limit to 50k chars per type
+        // Section name is exactly the source value (e.g., "=== acord ===")
+        // Increased limit from 50k to 200k chars per document type to preserve more context
+        const maxChars = 200000;
+        const truncated = text.length > maxChars 
+          ? text.substring(0, maxChars) + `\n\n[Document truncated - showing first ${maxChars} characters of ${text.length} total]`
+          : text;
+        prompt += `=== ${docType} ===\n${truncated}\n\n`;
       }
     }
 
     // Add any unclassified attachments
     for (const att of emailData.attachments || []) {
-      const docType = documentClassifications.get(att.id);
-      if (!docType || !parsedTexts.has(docType)) {
-        prompt += `=== ${att.filename} (${docType || 'other'}) ===\n[Content not yet parsed]\n\n`;
+      const docType = documentClassifications.get(att.id) || 'other';
+      if (!parsedTexts.has(docType)) {
+        prompt += `=== ${docType} ===\n[Content not yet parsed: ${att.filename}]\n\n`;
       }
     }
 
-    prompt += `\nExtract all fields from the above content according to the schema.`;
+    prompt += `\nExtract all fields from the above content according to the schema. 
+    
+IMPORTANT: The section name (between ===) is exactly the value you must use for "source" in your response.
+For example, if you find a value in the "=== acord ===" section, use source: "acord".
+If you find a value in the "=== email_body ===" section, use source: "email_body".`;
 
     return prompt;
   }
 
   /**
+   * Get all field paths from the schema (to ensure we generate extractions for ALL fields)
+   */
+  private getAllSchemaFields(): Array<{ path: string; name: string }> {
+    const fields: Array<{ path: string; name: string }> = [];
+    
+    const extractFieldsFromSchema = (obj: any, path: string = '') => {
+      if (!obj || typeof obj !== 'object') return;
+      
+      // Check if this is an array type definition
+      if (obj.type === 'array' && obj.items) {
+        // For arrays, we'll generate fields for index [0] as a template
+        // The actual array items will be handled when we process extractedData
+        extractFieldsFromSchema(obj.items, `${path}[0]`);
+        return;
+      }
+      
+      // Iterate through object properties
+      for (const [key, value] of Object.entries(obj)) {
+        if (!value || typeof value !== 'object') continue;
+        
+        const currentPath = path ? `${path}.${key}` : key;
+        
+        // Check if this is a field definition (has 'type' property)
+        if ('type' in value && typeof value.type === 'string') {
+          // Check if it's an array type with items
+          if (value.type === 'array' && 'items' in value && value.items) {
+            // This is an array field - recurse into items
+            extractFieldsFromSchema(value.items as any, `${currentPath}[0]`);
+          } else {
+            // This is a regular field definition - add it
+            fields.push({ path: currentPath, name: key });
+          }
+        } else {
+          // Nested object (not a field definition) - recurse
+          extractFieldsFromSchema(value, currentPath);
+        }
+      }
+    };
+    
+    // Process each section of the schema separately
+    if (this.fieldSchema.submission) {
+      extractFieldsFromSchema(this.fieldSchema.submission, 'submission');
+    }
+    if (this.fieldSchema.locations) {
+      extractFieldsFromSchema(this.fieldSchema.locations, 'locations[0]');
+    }
+    if (this.fieldSchema.coverage) {
+      extractFieldsFromSchema(this.fieldSchema.coverage, 'coverage');
+    }
+    if (this.fieldSchema.lossHistory) {
+      extractFieldsFromSchema(this.fieldSchema.lossHistory, 'lossHistory');
+    }
+    
+    this.logger.log(`getAllSchemaFields found ${fields.length} fields in schema`);
+    return fields;
+  }
+
+  /**
+   * Get value from nested object by path (e.g., "submission.namedInsured" or "locations[0].buildings[0].riskAddress")
+   */
+  private getValueByPath(obj: any, path: string): any {
+    const parts = path.split(/[\.\[\]]/).filter(p => p);
+    let current = obj;
+    
+    for (const part of parts) {
+      if (current === null || current === undefined) return null;
+      if (Array.isArray(current)) {
+        const index = parseInt(part, 10);
+        if (isNaN(index)) return null;
+        current = current[index];
+      } else if (typeof current === 'object') {
+        current = current[part];
+      } else {
+        return null;
+      }
+    }
+    
+    return current;
+  }
+
+  /**
+   * Set value in nested object by path, creating structure as needed
+   * Handles paths like "submission.namedInsured" or "locations[0].buildings[0].riskAddress"
+   */
+  private setValueByPath(obj: any, path: string, value: any): void {
+    // Parse path properly handling both dots and brackets
+    const parts: Array<{ key: string; index?: number }> = [];
+    let current = '';
+    let i = 0;
+    
+    while (i < path.length) {
+      if (path[i] === '.') {
+        if (current) {
+          parts.push({ key: current });
+          current = '';
+        }
+        i++;
+      } else if (path[i] === '[') {
+        if (current) {
+          parts.push({ key: current });
+          current = '';
+        }
+        i++;
+        // Read index until ']'
+        let indexStr = '';
+        while (i < path.length && path[i] !== ']') {
+          indexStr += path[i];
+          i++;
+        }
+        if (indexStr && !isNaN(parseInt(indexStr, 10))) {
+          const prevPart = parts[parts.length - 1];
+          if (prevPart) {
+            prevPart.index = parseInt(indexStr, 10);
+          }
+        }
+        i++; // Skip ']'
+      } else {
+        current += path[i];
+        i++;
+      }
+    }
+    
+    // Add last part
+    if (current) {
+      parts.push({ key: current });
+    }
+    
+    // Navigate/create structure
+    let currentObj = obj;
+    for (let j = 0; j < parts.length - 1; j++) {
+      const part = parts[j];
+      
+      if (part.index !== undefined) {
+        // Array access
+        if (!currentObj[part.key] || !Array.isArray(currentObj[part.key])) {
+          currentObj[part.key] = [];
+        }
+        // Ensure array is large enough
+        while (currentObj[part.key].length <= part.index) {
+          currentObj[part.key].push({});
+        }
+        if (!currentObj[part.key][part.index] || typeof currentObj[part.key][part.index] !== 'object') {
+          currentObj[part.key][part.index] = {};
+        }
+        currentObj = currentObj[part.key][part.index];
+      } else {
+        // Object property
+        if (!currentObj[part.key] || typeof currentObj[part.key] !== 'object' || Array.isArray(currentObj[part.key])) {
+          currentObj[part.key] = {};
+        }
+        currentObj = currentObj[part.key];
+      }
+    }
+    
+    // Set the final value
+    const lastPart = parts[parts.length - 1];
+    if (lastPart.index !== undefined) {
+      // Final value is in an array
+      if (!currentObj[lastPart.key] || !Array.isArray(currentObj[lastPart.key])) {
+        currentObj[lastPart.key] = [];
+      }
+      while (currentObj[lastPart.key].length <= lastPart.index) {
+        currentObj[lastPart.key].push(null);
+      }
+      currentObj[lastPart.key][lastPart.index] = value;
+    } else {
+      // Final value is a property
+      currentObj[lastPart.key] = value;
+    }
+  }
+
+  /**
+   * Extract a single field with its own dedicated LLM call
+   * Includes: businessDescription, extractorLogic, whereToLook, and all documents
+   */
+  private async extractSingleField(
+    schemaField: { path: string; name: string },
+    emailData: any,
+    documentClassifications: Map<string, string>,
+    parsedTexts: Map<string, string>,
+  ): Promise<{
+    fieldPath: string;
+    fieldName: string;
+    fieldValue: any;
+    source: string;
+    documentId?: string;
+    documentChunk?: string;
+    highlightedText?: string;
+    chunkStartIndex?: number;
+    chunkEndIndex?: number;
+    llmReasoning?: string;
+    llmResponse?: string;
+  }> {
+    // Get field definition from database
+    const fieldDef = this.fieldDefinitions.get(schemaField.name);
+    
+    // Build single-field system prompt
+    const systemPrompt = this.buildSingleFieldSystemPrompt(schemaField, fieldDef);
+    
+    // Build user prompt with all documents
+    const userPrompt = this.buildExtractionPrompt(emailData, documentClassifications, parsedTexts);
+    
+    // Add field-specific instruction
+    const fieldSpecificPrompt = `${userPrompt}\n\nEXTRACT THIS SPECIFIC FIELD:\nField Path: ${schemaField.path}\nField Name: ${schemaField.name}\n\nReturn a JSON object with this structure:\n{\n  "fieldValue": <extracted value or null>,\n  "source": "<document section where found>",\n  "documentChunk": "<200-500 char excerpt containing the value>",\n  "llmReasoning": "<explanation of extraction process>"\n}`;
+    
+    // Retry logic for rate limits
+    let retries = 3;
+    let delay = 1000; // Start with 1 second delay
+    
+    while (retries > 0) {
+      try {
+        const response = await this.openai.chat.completions.create({
+          model: this.configService.get<string>('OPENAI_MODEL') || 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: systemPrompt,
+            },
+            {
+              role: 'user',
+              content: fieldSpecificPrompt,
+            },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.1,
+        });
+      
+        const responseContent = response.choices[0].message.content || '{}';
+        const responseData = JSON.parse(responseContent);
+        
+        const fieldValue = responseData.fieldValue ?? null;
+        const hasValue = fieldValue !== null && fieldValue !== undefined && fieldValue !== '';
+        
+        if (hasValue) {
+          this.logger.log(`✓ Extracted ${schemaField.path}: ${JSON.stringify(fieldValue)} (source: ${responseData.source || 'other'})`);
+        } else {
+          this.logger.debug(`✗ No value found for ${schemaField.path} (source: ${responseData.source || 'other'})`);
+        }
+        
+        return {
+          fieldPath: schemaField.path,
+          fieldName: schemaField.name,
+          fieldValue: fieldValue,
+          source: responseData.source || 'other',
+          documentChunk: responseData.documentChunk || undefined,
+          highlightedText: responseData.documentChunk ? `<mark>${responseData.fieldValue}</mark>` : undefined,
+          llmReasoning: responseData.llmReasoning || undefined,
+          llmResponse: responseContent,
+        };
+      } catch (error: any) {
+        // Handle rate limits with retry
+        if (error?.status === 429 && retries > 0) {
+          const retryAfter = error.headers?.['retry-after-ms'] 
+            ? parseInt(error.headers['retry-after-ms'], 10) 
+            : delay;
+          this.logger.warn(`Rate limit hit for ${schemaField.path}, retrying in ${retryAfter}ms (${retries} retries left)`);
+          await new Promise(resolve => setTimeout(resolve, retryAfter));
+          retries--;
+          delay *= 2; // Exponential backoff
+          continue;
+        }
+        
+        this.logger.error(`Error in single field extraction for ${schemaField.path}:`, error);
+        throw error;
+      }
+    }
+    
+    // If we exhausted retries, throw the last error
+    throw new Error('Failed to extract field after retries');
+  }
+
+  /**
+   * Build system prompt for a single field extraction
+   */
+  private buildSingleFieldSystemPrompt(
+    schemaField: { path: string; name: string },
+    fieldDef?: FieldDefinitionInfo,
+  ): string {
+    let prompt = `You are an expert at extracting a single field from commercial property insurance submission documents.
+
+FIELD TO EXTRACT:
+Field Path: ${schemaField.path}
+Field Name: ${schemaField.name}`;
+
+    if (fieldDef) {
+      if (fieldDef.businessDescription) {
+        prompt += `\n\nBusiness Description:\n${fieldDef.businessDescription}`;
+      }
+      if (fieldDef.extractorLogic) {
+        prompt += `\n\nExtraction Logic:\n${fieldDef.extractorLogic}`;
+      }
+      if (fieldDef.whereToLook) {
+        prompt += `\n\nWhere to Look:\n${fieldDef.whereToLook}`;
+      }
+    }
+
+    prompt += `\n\nCRITICAL EXTRACTION STRATEGY:
+1. FIRST: Check the document sections specified in "Where to Look" (if provided)
+   - These are the most likely places to find the value
+   - Search thoroughly in these sections first
+2. IF NOT FOUND: Then search ALL other available document sections
+   - Don't give up after checking "Where to Look" sections
+   - Continue searching in all other document types (acord, sov, loss_run, schedule, supplemental, email_body, other)
+   - The value might be in an unexpected location
+
+Return a JSON object with:
+- fieldValue: The extracted value (or null if not found)
+- source: The document section where you found it (or "other" if not found)
+- documentChunk: A 200-500 character excerpt from the source document containing the value (or null if not found)
+- llmReasoning: A brief explanation of:
+  * What extraction logic you used
+  * Where you searched (list all document sections you checked)
+  * What patterns or keywords you looked for
+  * Why you chose this value (or why you couldn't find it)
+
+Be thorough and check ALL available document sections before returning null.`;
+
+    return prompt;
+  }
+
+  /**
+   * Add LLM reasoning for ALL fields (both extracted and null)
+   * This helps understand what logic was used, where it searched, and why it found (or didn't find) a value
+   */
+  private async addReasoningForAllFields(
+    fieldExtractions: Array<{
+      fieldPath: string;
+      fieldName: string;
+      fieldValue: any;
+      source: string;
+      documentId?: string;
+      documentChunk?: string;
+      highlightedText?: string;
+      chunkStartIndex?: number;
+      chunkEndIndex?: number;
+      llmReasoning?: string;
+    }>,
+    extractedData: any,
+    emailData: any,
+    documentClassifications: Map<string, string>,
+    parsedTexts: Map<string, string>,
+  ): Promise<Array<{
+      fieldPath: string;
+      fieldName: string;
+      fieldValue: any;
+      source: string;
+      documentId?: string;
+      documentChunk?: string;
+      highlightedText?: string;
+      chunkStartIndex?: number;
+      chunkEndIndex?: number;
+      llmReasoning?: string;
+    }>> {
+    
+    if (fieldExtractions.length === 0) {
+      this.logger.log('No fields found, skipping reasoning generation');
+      return fieldExtractions;
+    }
+    
+    this.logger.log(`Getting LLM reasoning for ${fieldExtractions.length} fields (both extracted and null)`);
+    
+    // Build a prompt asking for reasoning on all fields
+    const allFieldsPrompt = this.buildAllFieldsReasoningPrompt(
+      fieldExtractions,
+      extractedData,
+      emailData,
+      documentClassifications,
+      parsedTexts
+    );
+    
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: this.configService.get<string>('OPENAI_MODEL') || 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: `You are helping debug field extraction. For each field listed, explain:
+1. What extraction logic you used (based on the field's businessDescription and extractorLogic)
+2. Where you searched:
+   - FIRST: Which documents you checked from "Where to Look" (if provided)
+   - THEN: Which other documents you checked if not found in the prioritized documents
+   - List ALL document sections you searched (acord, sov, loss_run, schedule, supplemental, email_body, other)
+3. What patterns or keywords you looked for
+4. For extracted fields: Why you chose this specific value, which document section you found it in, and whether it was in the "Where to Look" section or elsewhere
+5. For null fields: Why you couldn't find a value after searching all document sections (what was missing, what you expected to see)
+
+Be concise but specific. Return JSON with fieldPath as key and reasoning as value.`,
+          },
+          {
+            role: 'user',
+            content: allFieldsPrompt,
+          },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.1,
+      });
+      
+      const responseContent = response.choices[0].message.content || '{}';
+      const reasoningMap = JSON.parse(responseContent);
+      
+      // Merge reasoning into field extractions
+      const updatedExtractions = fieldExtractions.map(fe => {
+        const reasoning = reasoningMap[fe.fieldPath] || reasoningMap[fe.fieldName];
+        if (reasoning) {
+          return { ...fe, llmReasoning: reasoning };
+        }
+        return fe;
+      });
+      
+      return updatedExtractions;
+    } catch (error: any) {
+      this.logger.warn(`Failed to get LLM reasoning for all fields: ${error.message}`);
+      // Return original extractions if reasoning fails
+      return fieldExtractions;
+    }
+  }
+
+  /**
+   * Build prompt for getting reasoning on all fields (extracted and null)
+   */
+  private buildAllFieldsReasoningPrompt(
+    fieldExtractions: Array<{ fieldPath: string; fieldName: string; fieldValue: any }>,
+    extractedData: any,
+    emailData: any,
+    documentClassifications: Map<string, string>,
+    parsedTexts: Map<string, string>,
+  ): string {
+    // Get field definitions and current values for all fields
+    const fieldDefs: string[] = [];
+    for (const field of fieldExtractions) {
+      const fieldDef = this.fieldDefinitions.get(field.fieldName);
+      const currentValue = field.fieldValue;
+      const valueStatus = (currentValue === null || currentValue === undefined || currentValue === '') 
+        ? 'NULL (not extracted)' 
+        : `EXTRACTED: "${currentValue}"`;
+      
+      let defText = `\n${field.fieldPath}: ${valueStatus}`;
+      if (fieldDef) {
+        if (fieldDef.businessDescription) {
+          defText += `\n  Business Description: ${fieldDef.businessDescription}`;
+        }
+        if (fieldDef.extractorLogic) {
+          defText += `\n  Extraction Logic: ${fieldDef.extractorLogic}`;
+        }
+        if (fieldDef.whereToLook) {
+          defText += `\n  Where to Look: ${fieldDef.whereToLook}`;
+        }
+      }
+      fieldDefs.push(defText);
+    }
+    
+    let prompt = `The following fields were extracted (some successfully, some returned null). For EACH field, explain:
+1. What extraction logic you used
+2. Where you searched
+3. What patterns or keywords you looked for
+4. For extracted fields: Why you chose this specific value and where you found it
+5. For null fields: Why you couldn't find a value
+
+FIELDS TO EXPLAIN:\n${fieldDefs.join('\n')}\n\n`;
+    
+    // Include document content for context
+    prompt += `DOCUMENT CONTENT:\n`;
+    prompt += `=== email_body ===\n`;
+    prompt += `From: ${emailData.from || 'N/A'}\n`;
+    prompt += `To: ${emailData.to || 'N/A'}\n`;
+    prompt += `Subject: ${emailData.subject || 'N/A'}\n`;
+    prompt += `${emailData.body || 'No email body'}\n\n`;
+    
+    const docTypes = ['acord', 'sov', 'loss_run', 'schedule', 'supplemental', 'other'];
+    for (const docType of docTypes) {
+      const text = parsedTexts.get(docType);
+      if (text) {
+        const maxChars = 50000; // Smaller chunk for reasoning prompt
+        const truncated = text.length > maxChars 
+          ? text.substring(0, maxChars) + `\n\n[Document truncated - showing first ${maxChars} characters]`
+          : text;
+        prompt += `=== ${docType} ===\n${truncated}\n\n`;
+      }
+    }
+    
+    prompt += `\nReturn a JSON object where each key is a fieldPath and the value is your reasoning for that field.
+
+For EXTRACTED fields, explain what you found and why:
+Example:
+{
+  "submission.namedInsured": "I first searched the ACORD forms and email body as indicated in whereToLook. I found 'Greenway Plaza, LLC' in the ACORD 125 form under the 'Named Insured' field (found in prioritized section). The value was clearly labeled and matched the businessDescription requirement for a legal entity name. I also verified this name appears in the loss runs.",
+  "locations[0].buildings[0].riskAddress": "I first searched the SOV document as indicated in whereToLook. I found the address in the SOV row: '2100 Greenway Plaza Drive, Austin, TX 78759' (found in prioritized section). I concatenated the Address, City, State, and Zip columns to form the complete address.",
+  "submission.brokerEmail": "I first checked email headers as indicated in whereToLook, but didn't find a broker email there. I then searched all other document sections (email body, ACORD, SOV, loss runs) and found the email 'jordan.lee@example.com' in the email body signature section (found in secondary search)."
+}
+
+For NULL fields, explain what you searched for and why you couldn't find it:
+Example:
+{
+  "submission.carrierName": "I first searched the email body, email signature, and ACORD headers as indicated in whereToLook. I looked for patterns like 'Carrier:', 'Insurance Company:', or company names in headers. I then searched all other document sections (SOV, loss runs, schedule, supplemental). I found 'Central States Property Insurance Co.' in the loss runs, but that appears to be the prior carrier, not the target market carrier. After searching all available documents, no target carrier name was found.",
+  "submission.brokerPhone": "I first searched the email signature and body as indicated in whereToLook for phone number patterns like (XXX) XXX-XXXX, XXX-XXX-XXXX, or XXX.XXX.XXXX. I then searched all other document sections (ACORD, SOV, loss runs, schedule, supplemental). After checking all available documents, no phone number matching these patterns was found."
+}`;
+    
+    return prompt;
+  }
+
+  /**
    * Generate field extractions from extracted data by finding source chunks
+   * Now generates extractions for ALL fields in the schema, not just ones with values
    */
   private async generateFieldExtractions(
     extractedData: any,
@@ -323,6 +1351,7 @@ Include fieldExtractions for ALL fields in the data structure, even if the value
     highlightedText?: string;
     chunkStartIndex?: number;
     chunkEndIndex?: number;
+    llmReasoning?: string;
   }>> {
     const fieldExtractions: Array<{
       fieldPath: string;
@@ -334,9 +1363,13 @@ Include fieldExtractions for ALL fields in the data structure, even if the value
       highlightedText?: string;
       chunkStartIndex?: number;
       chunkEndIndex?: number;
+      llmReasoning?: string;
     }> = [];
 
-    // Flatten the extracted data structure to iterate through all fields
+    // Get ALL fields from schema (not just ones in extractedData)
+    const schemaFields = this.getAllSchemaFields();
+    
+    // Also get fields from extractedData to handle array indices properly
     const flattenObject = (obj: any, prefix = '', path = ''): Array<{ path: string; name: string; value: any }> => {
       const fields: Array<{ path: string; name: string; value: any }> = [];
       
@@ -345,7 +1378,6 @@ Include fieldExtractions for ALL fields in the data structure, even if the value
         const value = obj[key];
         
         if (value === null || value === undefined) {
-          // Still add it but with null value
           fields.push({ path: currentPath, name: key, value: null });
         } else if (Array.isArray(value)) {
           value.forEach((item, index) => {
@@ -365,10 +1397,50 @@ Include fieldExtractions for ALL fields in the data structure, even if the value
       return fields;
     };
 
-    const allFields = flattenObject(extractedData);
+    const extractedFields = flattenObject(extractedData);
+    const extractedFieldsMap = new Map<string, any>();
+    for (const field of extractedFields) {
+      extractedFieldsMap.set(field.path, field.value);
+    }
     
-    // For each field with a value, try to find it in the source documents
-    for (const field of allFields) {
+    // Process ALL schema fields
+    const allFieldsToProcess = new Set<string>();
+    
+    // Add all schema fields
+    for (const schemaField of schemaFields) {
+      allFieldsToProcess.add(schemaField.path);
+      
+      // For array fields, also check if there are actual array items in extractedData
+      if (schemaField.path.includes('[0]')) {
+        const basePath = schemaField.path.replace('[0]', '');
+        const arrayValue = this.getValueByPath(extractedData, basePath);
+        if (Array.isArray(arrayValue)) {
+          // Generate fields for each array item
+          for (let i = 0; i < arrayValue.length; i++) {
+            const itemPath = schemaField.path.replace('[0]', `[${i}]`);
+            allFieldsToProcess.add(itemPath);
+          }
+        }
+      }
+    }
+    
+    // Also add any fields from extractedData that aren't in schema (for backwards compatibility)
+    for (const field of extractedFields) {
+      allFieldsToProcess.add(field.path);
+    }
+    
+    // Process ALL fields (from schema + extracted data)
+    for (const fieldPath of allFieldsToProcess) {
+      // Get field name from path
+      const pathParts = fieldPath.split(/[\.\[\]]/).filter(p => p);
+      const fieldName = pathParts[pathParts.length - 1] || fieldPath;
+      
+      // Get value from extractedData (or null if not present)
+      const fieldValue = extractedFieldsMap.get(fieldPath) ?? this.getValueByPath(extractedData, fieldPath) ?? null;
+      
+      // Create field object for processing
+      const field = { path: fieldPath, name: fieldName, value: fieldValue };
+      
       if (field.value === null || field.value === undefined || field.value === '') {
         // Create extraction record for null values WITHOUT chunks (no value found, nothing to show)
         fieldExtractions.push({
@@ -622,7 +1694,7 @@ Include fieldExtractions for ALL fields in the data structure, even if the value
     emailData: any,
     documentClassifications: Map<string, string>,
     parsedTexts: Map<string, string>,
-  ): Promise<{ data: any; fieldExtractions: Array<any> }> {
+  ): Promise<{ data: any; fieldExtractions: Array<any>; llmPrompt?: string | null; llmResponse?: string | null }> {
     this.logger.log('Using fallback extraction (no LLM)');
     
     const extracted: any = {
@@ -687,7 +1759,12 @@ Include fieldExtractions for ALL fields in the data structure, even if the value
     );
 
     this.logger.log('Fallback extraction completed with basic fields');
-    return { data: extracted, fieldExtractions };
+    return { 
+      data: extracted, 
+      fieldExtractions,
+      llmPrompt: undefined, // Fallback doesn't use LLM
+      llmResponse: undefined,
+    };
   }
 
   /**

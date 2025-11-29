@@ -1,0 +1,72 @@
+SUBJECT: New Property Submission – Oakridge Medical Office Center – 03/01/2027
+
+Hi Underwriting Team,
+
+Submission ID: SUBM-0001-OAKRIDGE
+Submission Type: New
+Target Carrier: Evergreen Property Insurance Co.
+
+We are submitting a new commercial property account for your review:
+
+Named Insured: Oakridge Medical Office Partners, LLC
+Mailing Address: 1200 Oakridge Medical Plaza, Suite 300, Portland, OR 97205
+NAICS Code: 621111
+Operations Description: Three-story medical office building with multiple physician practices and outpatient services (outpatient-only, no overnight stays).
+
+Effective Date: 03/01/2027
+Expiration Date: 03/01/2028
+Line of Business: Commercial Property (medical office)
+Requested Coverage: Building, Business Personal Property, and Business Income
+Requested Policy Type: Commercial Property
+Requested Cause of Loss Form: Special
+Requested Building Limit: $18,000,000
+Requested BPP Limit: $1,200,000
+Requested Business Income Limit: $3,000,000
+Deductible: $25,000 All Other Perils / 2% of building value, per occurrence
+Coinsurance: 90%
+Valuation: Replacement Cost
+
+Prior Carrier: Northwest Mutual Property & Casualty
+Prior Policy Number: NMP-CP-448201
+
+Location and Building Summary:
+- Location Number: 1
+- Building Number: 1
+- Building Name: Oakridge Medical Office Center
+- Risk Address: 1180 Oakridge Medical Plaza, Portland, OR 97205
+- Construction: Non-Combustible steel frame with concrete floors
+- Year Built: 2014 (major lobby/roof renovation in 2022)
+- Total Square Footage: 45,000 sq ft over 3 stories
+- Roof Type / Year Updated: TPO membrane / 2022
+- Sprinklered: Yes – 100% coverage (Wet sprinkler system throughout all floors)
+- Fire Alarm: Addressable monitored fire alarm system
+- Burglar Alarm: Monitored intrusion alarm with motion and door contacts
+- Fire Protection Class: 3
+- Distance to Hydrant: 150 feet
+- Distance to Fire Station: 1.2 miles
+- Primary Occupancy: Medical office (multi-tenant) at approximately 95% occupancy
+- Typical Building Use Hours: 7:00 a.m. – 7:00 p.m., Monday through Friday
+- Neighbouring Exposures: Retail center to the north, structured parking garage to the south, residential mid-rise two blocks east
+
+Loss History (Past 5 Years):
+- Number of Claims: 2
+- Total Incurred: $38,500
+- Largest Single Loss: $25,000
+- Any Open Claims: No
+- Any CAT Losses: No
+- Summary: Two minor interior water damage claims over the past five years, both fully repaired with plumbing upgrades. No CAT, wind, or liability losses; no open claims or outstanding reserves.
+
+Attachments included with this submission:
+1. ACORD 140 – Commercial Property Section
+2. SOV for Oakridge Medical Office Center
+3. 5-year property loss runs
+4. Medical office supplemental questionnaire
+
+Please let us know if you need additional information such as updated photos, inspection reports, or tenant lists.
+
+Best regards,
+Emily Carter
+Hospitality & Healthcare Practice
+Horizon Risk Partners
+Phone: (415) 555-2390
+Email: ecarter@horizonrisk.com

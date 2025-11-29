@@ -26,6 +26,7 @@ model FieldDefinition {
   documentFieldKey    String?
   businessDescription String?        @db.Text
   extractorLogic      String?        @db.Text
+  whereToLook         String?        @db.Text
   documentSources     String[]       @default([])
   alternateFieldNames String[]       @default([])
   createdAt           DateTime       @default(now())
@@ -108,6 +109,8 @@ model ExtractionResult {
   data           Json // Full structured fields (submission metadata, locations, coverage, loss history)
   qaFlags        Json? // Flags from orchestrator (warnings, confidence issues)
   summaryText    String?      @db.Text // LLM-generated summary paragraph
+  llmPrompt      String?      @db.Text // Full prompt sent to LLM (for debugging)
+  llmResponse    String?      @db.Text // Full response from LLM (for debugging)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -131,6 +134,7 @@ model FieldExtraction {
   chunkStartIndex   Int?              // Character index where chunk starts in original document
   chunkEndIndex      Int?              // Character index where chunk ends in original document
   confidence        Float?             // Confidence score (0-1) if available
+  llmReasoning      String?            @db.Text // LLM's reasoning/explanation for how it extracted this field
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 

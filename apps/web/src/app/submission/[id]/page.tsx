@@ -3,6 +3,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import PasswordProtection from '@/components/PasswordProtection';
+import ConditionalHeader from '@/components/ConditionalHeader';
+import RestrictedHeader from '@/components/RestrictedHeader';
 import { getApiUrl } from '@/lib/api-url';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 const API_URL = getApiUrl();
@@ -485,6 +488,7 @@ function SubmissionPageContent() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {fromEmail ? <RestrictedHeader /> : <ConditionalHeader />}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
@@ -751,7 +755,24 @@ function SubmissionPageContent() {
   );
 }
 
+function SubmissionPageWrapper() {
+  const searchParams = useSearchParams();
+  const fromEmail = searchParams.get('fromEmail') === 'true';
+  
+  // If coming from email, don't require password protection
+  if (fromEmail) {
+    return <SubmissionPageContent />;
+  }
+  
+  // Otherwise, require admin login
+  return (
+    <PasswordProtection>
+      <SubmissionPageContent />
+    </PasswordProtection>
+  );
+}
+
 export default function SubmissionPage() {
-  return <SubmissionPageContent />;
+  return <SubmissionPageWrapper />;
 }
 

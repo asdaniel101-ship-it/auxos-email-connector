@@ -1,0 +1,65 @@
+ACORD 140 – COMMERCIAL PROPERTY SECTION
+
+Applicant Information
+Named Insured: Oakridge Medical Office Partners, LLC
+Mailing Address: 1200 Oakridge Medical Plaza, Suite 300, Portland, OR 97205
+Business Type: Limited Liability Company
+NAICS Code: 621111
+Operations Description: Three-story medical office building with multiple physician practices and outpatient services (outpatient-only, no overnight stays).
+Primary Contact Name/Title: Emily Carter, Producer – Horizon Risk Partners
+Applicant Phone: (415) 555-2390
+
+Policy Information
+Submission ID: SUBM-0001-OAKRIDGE
+Submission Type: New
+Proposed Effective Date: 03/01/2027
+Proposed Expiration Date: 03/01/2028
+Company (Target Carrier): Evergreen Property Insurance Co.
+Producer: Emily Carter / Horizon Risk Partners
+Line of Business: Commercial Property
+Cause of Loss Form: Special
+Coinsurance: 90%
+Valuation: Replacement Cost
+Coverage Form: Building, Business Personal Property, and Business Income
+
+Location / Building Information
+Location Number: 1
+Building Number: 1
+Building Name: Oakridge Medical Office Center
+Building Address: 1180 Oakridge Medical Plaza
+City: Portland
+State: OR
+ZIP: 97205
+Protection Class: 3
+
+Construction Details
+Construction Type: Non-Combustible steel frame with concrete floors
+Year Built: 2014
+Year Renovated: 2022
+Number of Stories: 3
+Total Square Footage: 45000
+Roof Type: TPO membrane
+Roof Year Updated: 2022
+Sprinklered: Yes – 100% (Wet sprinkler system throughout all floors)
+Fire Alarm: Addressable monitored fire alarm system
+Burglar Alarm: Monitored intrusion alarm with motion and door contacts
+Distance to Hydrant (feet): 150
+Distance to Fire Station (miles): 1.2
+Neighbouring Exposures: Retail center to the north, structured parking garage to the south, residential mid-rise two blocks east
+
+Coverage Summary
+Building Limit: $18,000,000
+Business Personal Property Limit: $1,200,000
+Business Income / Extra Expense Limit: $3,000,000
+Deductible – All Other Perils: $25,000
+Wind/Hail Deductible: 2% of building value, per occurrence
+Flood Coverage: Excluded – outside special flood hazard area, NFIP not purchased
+Earthquake Coverage: Included with $5,000,000 sublimit
+Equipment Breakdown Coverage: Included
+Ordinance or Law Coverage: Included
+Terrorism (TRIA) Coverage: Accepted
+Blanket Coverage: No – Not applicable – single building with scheduled limits (no blanket).
+
+Prior Coverage
+Prior Carrier: Northwest Mutual Property & Casualty
+Expiring Policy Number: NMP-CP-448201

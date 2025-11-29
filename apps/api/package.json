@@ -23,7 +23,8 @@
     "seed": "ts-node --transpile-only prisma/seed.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "test:email": "ts-node --transpile-only test-email-connector.ts"
+    "test:email": "ts-node --transpile-only test-email-connector.ts",
+    "update:field-definitions": "ts-node --transpile-only scripts/update-field-definitions.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

@@ -29,7 +29,7 @@ import { FieldSchemaModule } from '../field-schema/field-schema.module';
     EmailIntakeSchedulerService,
   ],
   controllers: [EmailIntakeController],
-  exports: [EmailIntakeService],
+  exports: [EmailIntakeService, FieldExtractionService],
 })
 export class EmailIntakeModule {}
 

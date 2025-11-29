@@ -21,8 +21,13 @@ export class EmailListenerService {
     private minioService: MinioService,
     private fieldSchemaService: FieldSchemaService,
   ) {
-    this.email = this.configService.get<string>('GMAIL_EMAIL') || 'auxosreachout@gmail.com';
-    this.password = (this.configService.get<string>('GMAIL_APP_PASSWORD') || 'hynl gjjj dshw pjep').replace(/\s/g, '');
+    // Check both GMAIL_EMAIL/GMAIL_APP_PASSWORD and EMAIL_USER/EMAIL_PASSWORD
+    this.email = this.configService.get<string>('GMAIL_EMAIL') || 
+                 process.env.EMAIL_USER || 
+                 'auxosreachout@gmail.com';
+    this.password = (this.configService.get<string>('GMAIL_APP_PASSWORD') || 
+                    process.env.EMAIL_PASSWORD || 
+                    'hynl gjjj dshw pjep').replace(/\s/g, '');
     this.initializeSmtp();
   }
 

@@ -8,16 +8,30 @@ const API_URL = getApiUrl();
 
 interface FieldDefinition {
   type: string;
-  description: string;
+  description?: string; // This is now the business description
   whereToLook?: string;
+  extractorLogic?: string;
 }
 
 interface FieldData {
   [key: string]: FieldDefinition | FieldData | { type: string; description: string; items: FieldData };
 }
 
+interface DatabaseFieldDefinition {
+  id: string;
+  fieldName: string;
+  category: string;
+  fieldType: string;
+  businessDescription?: string | null;
+  extractorLogic?: string | null;
+  whereToLook?: string | null;
+  documentSources?: string[];
+  alternateFieldNames?: string[];
+}
+
 function FieldSchemaAdminContent() {
   const [schema, setSchema] = useState<FieldData | null>(null);
+  const [dbDefinitions, setDbDefinitions] = useState<Map<string, DatabaseFieldDefinition>>(new Map());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,27 +39,131 @@ function FieldSchemaAdminContent() {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<FieldDefinition | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
+  const [totalFieldsCount, setTotalFieldsCount] = useState(0);
 
   useEffect(() => {
-    loadSchema();
+    loadData();
   }, []);
 
-  const loadSchema = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`${API_URL}/field-schema`);
-      if (!response.ok) {
+      
+      // Load schema structure and database definitions in parallel
+      const [schemaResponse, definitionsResponse] = await Promise.all([
+        fetch(`${API_URL}/field-schema`),
+        fetch(`${API_URL}/field-definitions`),
+      ]);
+
+      if (!schemaResponse.ok) {
         throw new Error('Failed to load field schema');
       }
-      const data = await response.json();
-      setSchema(data);
+      if (!definitionsResponse.ok) {
+        throw new Error('Failed to load field definitions');
+      }
+
+      const schemaData = await schemaResponse.json();
+      const definitionsData = await definitionsResponse.json();
+
+      // Create map of field definitions by fieldName
+      const defMap = new Map<string, DatabaseFieldDefinition>();
+      definitionsData.forEach((def: DatabaseFieldDefinition) => {
+        defMap.set(def.fieldName, def);
+      });
+      setDbDefinitions(defMap);
+      
+      // Log for debugging
+      console.log(`Loaded ${definitionsData.length} field definitions from database`);
+      console.log(`Schema sections: ${Object.keys(schemaData).join(', ')}`);
+
+      // Merge database definitions into schema
+      const mergedSchema = mergeDefinitionsIntoSchema(schemaData, defMap);
+      setSchema(mergedSchema);
       setHasChanges(false);
+      
+      // Count total fields in schema for display
+      const countAllFields = (obj: any): number => {
+        let count = 0;
+        if (!obj || typeof obj !== 'object') return count;
+        for (const [key, value] of Object.entries(obj)) {
+          if (value && typeof value === 'object') {
+            if ('type' in value && typeof value.type === 'string') {
+              count++;
+            } else if ('type' in value && value.type === 'array' && 'items' in value) {
+              count += countAllFields(value.items);
+            } else {
+              count += countAllFields(value);
+            }
+          }
+        }
+        return count;
+      };
+      setTotalFieldsCount(countAllFields(mergedSchema));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load schema');
+      setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
     }
+  };
+
+  const mergeDefinitionsIntoSchema = (
+    schemaData: FieldData,
+    definitions: Map<string, DatabaseFieldDefinition>
+  ): FieldData => {
+    const merged = JSON.parse(JSON.stringify(schemaData)); // Deep copy
+
+    const mergeIntoField = (obj: any, path: string = '') => {
+      if (!obj || typeof obj !== 'object') return;
+
+      if (Array.isArray(obj)) {
+        obj.forEach((item, index) => {
+          if (typeof item === 'object') {
+            mergeIntoField(item, `${path}[${index}]`);
+          }
+        });
+        return;
+      }
+
+      if (obj.type === 'array' && obj.items) {
+        mergeIntoField(obj.items, path);
+        return;
+      }
+
+      for (const [key, value] of Object.entries(obj)) {
+        const fieldPath = path ? `${path}.${key}` : key;
+
+        if (value && typeof value === 'object') {
+          if ('type' in value && typeof value.type === 'string') {
+            // This is a field definition - merge database info
+            // Try to find database definition by field name (key)
+            const dbDef = definitions.get(key);
+            if (dbDef) {
+              // Map businessDescription from DB to description in UI
+              // Prefer database value over JSON schema value
+              if (dbDef.businessDescription) {
+                (value as FieldDefinition).description = dbDef.businessDescription;
+              } else if ((value as FieldDefinition).description) {
+                // Keep existing description from JSON if no DB value
+              }
+              if (dbDef.extractorLogic) {
+                (value as FieldDefinition).extractorLogic = dbDef.extractorLogic;
+              }
+              if (dbDef.whereToLook) {
+                (value as FieldDefinition).whereToLook = dbDef.whereToLook;
+              }
+            }
+            // Always keep the field even if no DB definition exists
+            // This ensures all schema fields are shown
+          } else {
+            mergeIntoField(value, fieldPath);
+          }
+        }
+      }
+    };
+
+    mergeIntoField(merged);
+    return merged;
   };
 
   const handleSaveAll = async () => {
@@ -56,27 +174,122 @@ function FieldSchemaAdminContent() {
       setError(null);
       setSuccess(null);
 
-      const response = await fetch(`${API_URL}/field-schema`, {
+      // Extract all field definitions from schema and convert to database format
+      const definitionsToSave: Array<{
+        fieldName: string;
+        category: string;
+        fieldType: string;
+        businessDescription?: string | null;
+        extractorLogic?: string | null;
+        whereToLook?: string | null;
+      }> = [];
+
+      const extractFields = (obj: any, category: string = 'submission', path: string = '') => {
+        if (!obj || typeof obj !== 'object') return;
+
+        if (obj.type === 'array' && obj.items) {
+          extractFields(obj.items, category, path);
+          return;
+        }
+
+        for (const [key, value] of Object.entries(obj)) {
+          const fieldPath = path ? `${path}.${key}` : key;
+
+          if (value && typeof value === 'object') {
+            if ('type' in value && typeof value.type === 'string') {
+              // This is a field definition
+              const fieldDef = value as FieldDefinition;
+              const fieldCategory = determineCategory(fieldPath);
+              
+              // Get existing DB definition to preserve values that weren't edited
+              const existingDef = dbDefinitions.get(key);
+              
+              definitionsToSave.push({
+                fieldName: key,
+                category: fieldCategory,
+                fieldType: mapTypeToFieldValueType(fieldDef.type),
+                // Map description from UI to businessDescription in DB
+                businessDescription: fieldDef.description !== undefined && fieldDef.description !== '' 
+                  ? fieldDef.description 
+                  : (existingDef?.businessDescription || null),
+                extractorLogic: fieldDef.extractorLogic !== undefined && fieldDef.extractorLogic !== ''
+                  ? fieldDef.extractorLogic
+                  : (existingDef?.extractorLogic || null),
+                whereToLook: fieldDef.whereToLook !== undefined && fieldDef.whereToLook !== ''
+                  ? fieldDef.whereToLook
+                  : (existingDef?.whereToLook || null),
+              });
+            } else {
+              // Determine category from path
+              const newCategory = determineCategory(fieldPath);
+              extractFields(value, newCategory, fieldPath);
+            }
+          }
+        }
+      };
+
+      extractFields(schema);
+
+      if (definitionsToSave.length === 0) {
+        throw new Error('No fields found to save');
+      }
+
+      // Save to database
+      const response = await fetch(`${API_URL}/field-definitions`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(schema),
+        body: JSON.stringify(definitionsToSave),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save schema');
+        const errorText = await response.text();
+        let errorMessage = 'Failed to save field definitions';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
-      setSuccess('Field schema updated successfully! Restart the API server for changes to take effect.');
+      const savedData = await response.json();
+      
+      setSuccess(`Field definitions updated successfully! ${savedData.length} fields saved. Changes will be used for the next submission.`);
       setHasChanges(false);
       setEditingField(null);
+      
+      // Reload to get updated data from database
+      await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save schema');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save field definitions';
+      setError(errorMessage);
+      console.error('Error saving field definitions:', err);
     } finally {
       setSaving(false);
     }
+  };
+
+  const determineCategory = (fieldPath: string): string => {
+    if (fieldPath.startsWith('submission.')) return 'submission';
+    if (fieldPath.startsWith('locations')) return 'locations';
+    if (fieldPath.startsWith('coverage.')) return 'coverage';
+    if (fieldPath.startsWith('lossHistory.')) return 'lossHistory';
+    return 'submission';
+  };
+
+  const mapTypeToFieldValueType = (type: string): string => {
+    const mapping: Record<string, string> = {
+      string: 'string',
+      number: 'number',
+      decimal: 'decimal',
+      boolean: 'boolean',
+      date: 'string',
+      text: 'text',
+    };
+    return mapping[type] || 'string';
   };
 
   const startEdit = (fieldPath: string) => {
@@ -85,8 +298,9 @@ function FieldSchemaAdminContent() {
       setEditingField(fieldPath);
       setEditValues({
         type: field.type,
-        description: field.description,
+        description: field.description || '', // This is the business description
         whereToLook: field.whereToLook || '',
+        extractorLogic: field.extractorLogic || '',
       });
     }
   };
@@ -96,7 +310,7 @@ function FieldSchemaAdminContent() {
     setEditValues(null);
   };
 
-  const saveField = (fieldPath: string) => {
+  const saveField = async (fieldPath: string) => {
     if (!schema || !editValues) return;
 
     const newSchema = JSON.parse(JSON.stringify(schema)) as FieldData;
@@ -107,7 +321,6 @@ function FieldSchemaAdminContent() {
     for (let i = 0; i < pathParts.length - 1; i++) {
       const part = pathParts[i];
       
-      // Handle array items structure like "locations[items]"
       if (part.includes('[items]')) {
         const key = part.replace('[items]', '');
         const currentObj = current as FieldData;
@@ -128,16 +341,59 @@ function FieldSchemaAdminContent() {
 
     const fieldName = pathParts[pathParts.length - 1];
     const currentObj = current as FieldData;
-    currentObj[fieldName] = {
+    const updatedField: FieldDefinition = {
       type: editValues.type,
-      description: editValues.description,
-      ...(editValues.whereToLook ? { whereToLook: editValues.whereToLook } : {}),
+      description: editValues.description || undefined, // This is the business description
+      whereToLook: editValues.whereToLook || undefined,
+      extractorLogic: editValues.extractorLogic || undefined,
     };
+
+    currentObj[fieldName] = updatedField;
 
     setSchema(newSchema);
     setHasChanges(true);
     setEditingField(null);
     setEditValues(null);
+    
+    // Auto-save this single field to database immediately
+    try {
+      const fieldCategory = determineCategory(fieldPath);
+      const existingDef = dbDefinitions.get(fieldName);
+      
+      const fieldToSave = {
+        fieldName: fieldName,
+        category: fieldCategory,
+        fieldType: mapTypeToFieldValueType(editValues.type),
+        businessDescription: editValues.description || null, // Map description to businessDescription
+        extractorLogic: editValues.extractorLogic || null,
+        whereToLook: editValues.whereToLook || null,
+      };
+
+      const response = await fetch(`${API_URL}/field-definitions`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify([fieldToSave]),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Failed to save field');
+      }
+
+      // Update local dbDefinitions map
+      const updatedDef = { ...existingDef, ...fieldToSave } as DatabaseFieldDefinition;
+      dbDefinitions.set(fieldName, updatedDef);
+      setDbDefinitions(new Map(dbDefinitions));
+      
+      // Reload to ensure we have the latest from database
+      await loadData();
+    } catch (err) {
+      console.error('Error auto-saving field:', err);
+      // Don't show error to user - they can still use "Save All Changes"
+      // Just log it for debugging
+    }
   };
 
   const getFieldByPath = (data: FieldData | null, path: string): FieldDefinition | null => {
@@ -146,7 +402,6 @@ function FieldSchemaAdminContent() {
     let current: FieldData | FieldDefinition | { type: string; description: string; items: FieldData } = data;
 
     for (const part of pathParts) {
-      // Handle array items structure like "locations[items]"
       if (part.includes('[items]')) {
         const key = part.replace('[items]', '');
         const currentObj = current as FieldData;
@@ -173,14 +428,26 @@ function FieldSchemaAdminContent() {
   };
 
   const renderField = (fieldName: string, field: FieldDefinition, fieldPath: string) => {
+    // Skip rendering array containers - they're just structural
+    if (field.type === 'array') {
+      return null;
+    }
+    
     const isEditing = editingField === fieldPath;
     const displayName = fieldName
       .replace(/([A-Z])/g, ' $1')
       .replace(/^./, (str) => str.toUpperCase())
       .trim();
+    
+    // Extract the actual field name from path (e.g., "fireAlarmType" from "locations[0].buildings[0].fireAlarmType")
+    const actualFieldName = fieldPath.split('.').pop()?.replace(/\[\d+\]/g, '') || fieldName;
+    
+    // Check if this field has a database definition (use actual field name, not path)
+    const hasDefinition = dbDefinitions.has(actualFieldName);
+    const dbDef = dbDefinitions.get(actualFieldName);
 
     return (
-      <div key={fieldPath} className="border border-slate-200 rounded-lg p-4 bg-white">
+      <div key={fieldPath} className={`border rounded-lg p-4 ${hasDefinition ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-300 border-dashed'}`}>
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
@@ -188,14 +455,37 @@ function FieldSchemaAdminContent() {
               <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 rounded">
                 {field.type}
               </span>
+              {hasDefinition ? (
+                <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded">
+                  ✓ Has Definition
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">
+                  ⚠ No Definition
+                </span>
+              )}
+              <span className="text-xs text-slate-400 font-mono ml-auto">
+                {fieldPath}
+              </span>
             </div>
             {!isEditing ? (
-              <div className="space-y-1">
-                <p className="text-sm text-slate-700">{field.description}</p>
-                {field.whereToLook && (
-                  <p className="text-xs text-slate-500">
-                    <span className="font-medium">Where to look:</span> {field.whereToLook}
+              <div className="space-y-2">
+                {(dbDef?.businessDescription || field.description) && (
+                  <p className="text-sm text-slate-700">
+                    {dbDef?.businessDescription || field.description}
                   </p>
+                )}
+                {(dbDef?.extractorLogic || (field as any).extractorLogic) && (
+                  <div className="text-xs">
+                    <span className="font-medium text-slate-600">Extraction Logic:</span>
+                    <p className="text-slate-500 mt-0.5">{dbDef?.extractorLogic || (field as any).extractorLogic}</p>
+                  </div>
+                )}
+                {(dbDef?.whereToLook || (field as any).whereToLook) && (
+                  <div className="text-xs">
+                    <span className="font-medium text-slate-600">Where to Look:</span>
+                    <p className="text-slate-500 mt-0.5">{dbDef?.whereToLook || (field as any).whereToLook}</p>
+                  </div>
                 )}
               </div>
             ) : (
@@ -219,17 +509,28 @@ function FieldSchemaAdminContent() {
                     value={editValues?.description || ''}
                     onChange={(e) => setEditValues({ ...editValues!, description: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 focus:border-slate-900 resize-none"
-                    rows={2}
+                    rows={3}
+                    placeholder="Business context for this field (e.g., what it means, why it's important)"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Where to Look (optional)</label>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Extraction Logic</label>
+                  <textarea
+                    value={editValues?.extractorLogic || ''}
+                    onChange={(e) => setEditValues({ ...editValues!, extractorLogic: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 focus:border-slate-900 resize-none"
+                    rows={4}
+                    placeholder="Detailed instructions for the LLM on how to extract this field (e.g., specific patterns, formats, edge cases)"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Where to Look</label>
                   <input
                     type="text"
                     value={editValues?.whereToLook || ''}
                     onChange={(e) => setEditValues({ ...editValues!, whereToLook: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-                    placeholder="e.g., ACORD, email body, signature"
+                    placeholder="e.g., ACORD 125/140, SOV header, email body"
                   />
                 </div>
                 <div className="flex gap-2">
@@ -268,38 +569,45 @@ function FieldSchemaAdminContent() {
     const processObject = (obj: FieldData | FieldDefinition | { type: string; description: string; items: FieldData }, prefix: string, _depth: number = 0) => {
       if (!obj || typeof obj !== 'object') return;
 
-      // Check if this is an array type definition
+      // Handle array type with items - expand the array and process its items
       if ('type' in obj && obj.type === 'array' && 'items' in obj) {
-        // Process the items structure
         if (obj.items && typeof obj.items === 'object') {
-          processObject(obj.items, `${prefix}[items]`, _depth + 1);
+          // Process items - use [0] notation to show it's an array item
+          processObject(obj.items, `${prefix}[0]`, _depth + 1);
         }
         return;
       }
 
-      // Process regular object fields
+      // Process object properties
       const objAsData = obj as FieldData;
       for (const [key, value] of Object.entries(objAsData)) {
+        if (!value || typeof value !== 'object') continue;
+        
         const fieldPath = prefix ? `${prefix}.${key}` : key;
 
-        if (value && typeof value === 'object') {
-          if ('type' in value && typeof value.type === 'string') {
-            // It's a field definition (has type, description, etc.)
-            fields.push(renderField(key, value as FieldDefinition, fieldPath));
-          } else if ('items' in value) {
-            // It's an array type - recurse into items
-            processObject(value, fieldPath, _depth + 1);
-          } else {
-            // It's a nested object - recurse
-            processObject(value as FieldData, fieldPath, _depth + 1);
+        // Check if this is an array field - expand it, don't render the array itself
+        if ('type' in value && value.type === 'array' && 'items' in value) {
+          // This is an array field - process its items (don't render the array container)
+          if (value.items && typeof value.items === 'object') {
+            processObject(value.items, `${fieldPath}[0]`, _depth + 1);
           }
+        } 
+        // Check if this is a field definition (has 'type' property and is NOT an array)
+        else if ('type' in value && typeof value.type === 'string' && value.type !== 'array') {
+          // This is a field - render it
+          fields.push(renderField(key, value as FieldDefinition, fieldPath));
+        } 
+        // Nested object - recurse
+        else {
+          processObject(value as FieldData, fieldPath, _depth + 1);
         }
       }
     };
 
     processObject(sectionData, sectionName);
 
-    return fields;
+    // Filter out null fields (arrays that shouldn't be rendered)
+    return fields.filter(f => f !== null);
   };
 
   if (loading) {
@@ -340,11 +648,18 @@ function FieldSchemaAdminContent() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-semibold text-slate-900 mb-2">Field Schema Editor</h1>
-              <p className="text-slate-600">Edit field definitions for email document extraction</p>
+              <p className="text-slate-600">
+                Edit field definitions for email document extraction
+                {dbDefinitions.size > 0 && (
+                  <span className="ml-2 text-slate-400">
+                    ({dbDefinitions.size} field definitions in database)
+                  </span>
+                )}
+              </p>
             </div>
             <div className="flex gap-3">
               <button
-                onClick={loadSchema}
+                onClick={loadData}
                 className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
               >
                 Reload
@@ -377,21 +692,46 @@ function FieldSchemaAdminContent() {
             </div>
           )}
 
+          <div className="mb-4 flex items-center justify-between">
+            <div className="text-sm text-slate-600">
+              Showing all fields from schema. Fields with database definitions will show extractor logic.
+              {totalFieldsCount > 0 && (
+                <span className="ml-2 font-medium">
+                  Total: {totalFieldsCount} fields | {dbDefinitions.size} with definitions
+                </span>
+              )}
+            </div>
+            <button
+              onClick={loadData}
+              className="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-800 transition-colors"
+            >
+              Refresh Data
+            </button>
+          </div>
+
           <div className="space-y-6">
             {Object.entries(schema).map(([sectionKey, sectionData]) => {
-              // Type guard: ensure sectionData is FieldData (not FieldDefinition)
               if (sectionData && typeof sectionData === 'object' && 'type' in sectionData && !('items' in sectionData)) {
-                return null; // Skip if it's a FieldDefinition, not a section
+                return null;
               }
+              const sectionFields = renderSection(sectionKey, sectionData as FieldData);
+              
               return (
                 <div key={sectionKey} className="border border-slate-200 rounded-lg overflow-hidden">
-                  <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
+                  <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
                     <h2 className="text-xl font-semibold text-slate-900">
                       {sectionTitles[sectionKey] || sectionKey}
                     </h2>
+                    <span className="text-sm text-slate-500">
+                      {sectionFields.length} field{sectionFields.length !== 1 ? 's' : ''}
+                    </span>
                   </div>
                   <div className="p-6 space-y-4">
-                    {renderSection(sectionKey, sectionData as FieldData)}
+                    {sectionFields.length > 0 ? (
+                      sectionFields
+                    ) : (
+                      <p className="text-sm text-slate-500 italic">No fields in this section</p>
+                    )}
                   </div>
                 </div>
               );
@@ -400,10 +740,7 @@ function FieldSchemaAdminContent() {
 
           <div className="mt-6 text-sm text-slate-500">
             <p>
-              <strong>Note:</strong> After saving, restart the API server for changes to take effect. A backup is automatically created before saving.
-            </p>
-            <p className="mt-1">
-              File location: <code className="bg-slate-100 px-2 py-1 rounded">apps/api/field-schema.json</code>
+              <strong>Note:</strong> Field definitions are stored in the database and will be used immediately for the next submission. No server restart required.
             </p>
           </div>
         </div>

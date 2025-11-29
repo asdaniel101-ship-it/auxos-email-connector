@@ -143,12 +143,16 @@ export class EmailIntakeService {
           data: extractionResult.data,
           qaFlags: qaFlags,
           summaryText: packagedResponse.summary,
+          llmPrompt: extractionResult.llmPrompt || null,
+          llmResponse: extractionResult.llmResponse || null,
         },
         create: {
           emailMessageId: emailData.id,
           data: extractionResult.data,
           qaFlags: qaFlags,
           summaryText: packagedResponse.summary,
+          llmPrompt: extractionResult.llmPrompt || null,
+          llmResponse: extractionResult.llmResponse || null,
         },
       });
 
@@ -174,6 +178,7 @@ export class EmailIntakeService {
             chunkStartIndex: fe.chunkStartIndex || null,
             chunkEndIndex: fe.chunkEndIndex || null,
             confidence: fe.confidence || null,
+            llmReasoning: fe.llmReasoning || null,
           })),
         });
       }

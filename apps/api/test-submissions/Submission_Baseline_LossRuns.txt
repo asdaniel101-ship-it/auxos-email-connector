@@ -1,0 +1,44 @@
+Carrier: Northwest Mutual Property & Casualty
+Insured Name: Oakridge Medical Office Partners, LLC
+Policy Number: NMP-CP-448201
+Line of Business: Commercial Property
+Loss Period: 03/01/2022 – 02/29/2027
+Valuation Date: 01/15/2027
+Currency: USD
+
+Summary By Policy Year
+Policy Year | Incurred Loss | Paid Loss | Outstanding Reserve | Number of Claims
+2022-2023  |   13,500      |  13,500   |         0           |       1
+2023-2024  |   25,000      |  25,000   |         0           |       1
+2024-2025  |      0        |     0     |         0           |       0
+2025-2026  |      0        |     0     |         0           |       0
+2026-2027* |      0        |     0     |         0           |       0
+*Through 01/15/2027
+
+Claim Detail
+Claim Number: OM-2023-0174
+Policy Year: 2022-2023
+Date of Loss: 10/12/2022
+Date Reported: 10/12/2022
+Loss Location: 1180 Oakridge Medical Plaza, Portland, OR 97205
+Cause of Loss: Water – exam room sink overflow
+Loss Description: Overflowing sink in a third-floor exam room caused localized water damage to flooring and cabinetry. No impact to adjacent suites; operations continued with minimal disruption.
+Status: Closed
+Paid – Building: 13,500
+Paid – Business Income: 0
+Total Incurred: 13,500
+
+Claim Number: OM-2024-0339
+Policy Year: 2023-2024
+Date of Loss: 05/03/2024
+Date Reported: 05/03/2024
+Loss Location: 1180 Oakridge Medical Plaza, Portland, OR 97205
+Cause of Loss: Water – domestic line leak in mechanical room
+Loss Description: Leak from a domestic water line in the second-floor mechanical room resulted in water damage to nearby corridor finishes and ceiling tiles below. Mechanical systems repaired and insulation replaced.
+Status: Closed
+Paid – Building: 25,000
+Paid – Business Income: 0
+Total Incurred: 25,000
+
+Carrier Comments:
+Two minor interior water damage claims over the past five years, both fully repaired with plumbing upgrades. No CAT, wind, or liability losses; no open claims or outstanding reserves.

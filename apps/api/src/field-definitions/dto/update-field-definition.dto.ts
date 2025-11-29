@@ -34,6 +34,10 @@ export class UpdateFieldDefinitionDto {
   extractorLogic?: string | null;
 
   @IsOptional()
+  @IsString()
+  whereToLook?: string | null;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   documentSources?: string[];
