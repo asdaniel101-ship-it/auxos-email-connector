@@ -127,7 +127,7 @@ function FieldSchemaAdminContent() {
       }
 
       if (obj.type === 'array' && obj.items) {
-        mergeIntoField(obj.items, path);
+        mergeIntoField(obj.items as Record<string, unknown>, path);
         return;
       }
 
