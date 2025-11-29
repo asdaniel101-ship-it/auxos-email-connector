@@ -58,7 +58,7 @@ function DebugExtractorsContent() {
         if (value.type === 'array' && 'items' in value) {
           // Process array items
           if (value.items && typeof value.items === 'object') {
-            const nestedFields = getAllFieldsFromSchema(value.items, `${fieldPath}[0]`);
+            const nestedFields = getAllFieldsFromSchema(value.items as Record<string, unknown>, `${fieldPath}[0]`);
             fields.push(...nestedFields);
           }
         } else {
@@ -68,13 +68,13 @@ function DebugExtractorsContent() {
         }
       } else {
         // Nested object - recurse
-        const nestedFields = getAllFieldsFromSchema(value, fieldPath);
+        const nestedFields = getAllFieldsFromSchema(value as Record<string, unknown>, fieldPath);
         fields.push(...nestedFields);
       }
     }
     
     return fields;
-  };
+  }, []);
 
   const loadSubmissions = async () => {
     try {
@@ -144,18 +144,6 @@ function DebugExtractorsContent() {
     return allFields;
   };
 
-  const getFieldDefinition = async (fieldName: string) => {
-    try {
-      const response = await fetch(`${API_URL}/field-definitions`);
-      if (response.ok) {
-        const definitions = await response.json();
-        return definitions.find((d: any) => d.fieldName === fieldName);
-      }
-    } catch (err) {
-      console.error('Error loading field definition:', err);
-    }
-    return null;
-  };
 
   if (loading) {
     return (
