@@ -37,7 +37,9 @@ export class FieldExtractionService implements OnModuleInit {
   ) {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
     if (!apiKey || !OpenAI) {
-      this.logger.warn('OPENAI_API_KEY not set or OpenAI not installed - field extraction will not work');
+      this.logger.warn(
+        'OPENAI_API_KEY not set or OpenAI not installed - field extraction will not work',
+      );
     } else {
       this.openai = new OpenAI({ apiKey });
     }
@@ -54,11 +56,29 @@ export class FieldExtractionService implements OnModuleInit {
    */
   private async loadFieldSchema() {
     try {
-      const schemaPath = path.join(__dirname, '../../field-schema.json');
-      if (fs.existsSync(schemaPath)) {
-        this.fieldSchema = JSON.parse(fs.readFileSync(schemaPath, 'utf-8'));
+      // Try multiple possible locations so this works both in dev and in the built Docker image
+      const candidates: string[] = [];
+
+      // 1) CWD (apps/api in dev, /app/apps/api in prod)
+      candidates.push(path.join(process.cwd(), 'field-schema.json'));
+
+      // 2) Relative to compiled file (dist/src/email-intake → dist/field-schema.json)
+      candidates.push(path.join(__dirname, '../../field-schema.json'));
+
+      // 3) One level higher (dist/src/email-intake → ../field-schema.json) – safety fallback
+      candidates.push(path.join(__dirname, '../field-schema.json'));
+
+      const existingPath = candidates.find((p) => fs.existsSync(p));
+
+      if (existingPath) {
+        this.logger.log(`Loaded field schema from: ${existingPath}`);
+        this.fieldSchema = JSON.parse(fs.readFileSync(existingPath, 'utf-8'));
       } else {
-        this.logger.warn('field-schema.json not found, using default schema');
+        this.logger.warn(
+          `field-schema.json not found in any known location, using default schema. Tried: ${candidates.join(
+            ', ',
+          )}`,
+        );
         this.fieldSchema = this.getDefaultSchema();
       }
     } catch (error) {
@@ -74,7 +94,7 @@ export class FieldExtractionService implements OnModuleInit {
     try {
       const definitions = await this.prisma.fieldDefinition.findMany();
       this.fieldDefinitions.clear();
-      
+
       for (const def of definitions) {
         this.fieldDefinitions.set(def.fieldName, {
           fieldName: def.fieldName,
@@ -86,10 +106,15 @@ export class FieldExtractionService implements OnModuleInit {
           documentSources: def.documentSources,
         });
       }
-      
-      this.logger.log(`Loaded ${this.fieldDefinitions.size} field definitions from database`);
+
+      this.logger.log(
+        `Loaded ${this.fieldDefinitions.size} field definitions from database`,
+      );
     } catch (error) {
-      this.logger.error('Error loading field definitions from database:', error);
+      this.logger.error(
+        'Error loading field definitions from database:',
+        error,
+      );
       // Continue with empty map - will use schema defaults
     }
   }
@@ -107,22 +132,27 @@ export class FieldExtractionService implements OnModuleInit {
   getEnhancedSchemaForDebug() {
     const enhancedSchema = this.buildEnhancedSchema();
     const fieldsWithLogic = this.countFieldsWithExtractorLogic(enhancedSchema);
-    
+
     // Get a sample of fields with extractor logic
     const sampleFields: any[] = [];
     const collectSampleFields = (obj: any, path: string = '') => {
       if (!obj || typeof obj !== 'object' || sampleFields.length >= 5) return;
-      
+
       if (obj.type === 'array' && obj.items) {
         collectSampleFields(obj.items, path);
         return;
       }
-      
+
       for (const [key, value] of Object.entries(obj)) {
         if (sampleFields.length >= 5) break;
         const fieldPath = path ? `${path}.${key}` : key;
-        
-        if (value && typeof value === 'object' && 'type' in value && typeof value.type === 'string') {
+
+        if (
+          value &&
+          typeof value === 'object' &&
+          'type' in value &&
+          typeof value.type === 'string'
+        ) {
           const fieldValue = value as any;
           if (fieldValue.extractorLogic) {
             sampleFields.push({
@@ -131,7 +161,8 @@ export class FieldExtractionService implements OnModuleInit {
               hasBusinessDescription: !!fieldValue.businessDescription,
               hasExtractorLogic: !!fieldValue.extractorLogic,
               hasWhereToLook: !!fieldValue.whereToLook,
-              extractorLogicPreview: fieldValue.extractorLogic.substring(0, 100) + '...',
+              extractorLogicPreview:
+                fieldValue.extractorLogic.substring(0, 100) + '...',
             });
           }
         } else if (value && typeof value === 'object') {
@@ -139,9 +170,9 @@ export class FieldExtractionService implements OnModuleInit {
         }
       }
     };
-    
+
     collectSampleFields(enhancedSchema);
-    
+
     return {
       totalFieldsWithExtractorLogic: fieldsWithLogic,
       totalFieldDefinitionsLoaded: this.fieldDefinitions.size,
@@ -154,7 +185,10 @@ export class FieldExtractionService implements OnModuleInit {
    * Extract fields from email and documents using LLM
    * Returns both extracted data and field extractions with document chunks
    */
-  async extract(emailData: any, documentClassifications: Map<string, string>): Promise<{
+  async extract(
+    emailData: any,
+    documentClassifications: Map<string, string>,
+  ): Promise<{
     data: any;
     fieldExtractions: Array<{
       fieldPath: string;
@@ -184,13 +218,20 @@ export class FieldExtractionService implements OnModuleInit {
     for (const [docType, text] of parsedTexts.entries()) {
       const charCount = text.length;
       const preview = text.substring(0, 200).replace(/\n/g, ' ');
-      this.logger.log(`  ${docType}: ${charCount} characters - "${preview}..."`);
+      this.logger.log(
+        `  ${docType}: ${charCount} characters - "${preview}..."`,
+      );
     }
-    this.logger.log(`Email body length: ${(emailData.body || '').length} characters`);
+    this.logger.log(
+      `Email body length: ${(emailData.body || '').length} characters`,
+    );
 
     // Build a map of attachment ID to full parsed text
     // Note: parseAllDocuments groups by docType, so we need to parse individually for proper mapping
-    const attachmentTextMap = new Map<string, { text: string; docType: string }>();
+    const attachmentTextMap = new Map<
+      string,
+      { text: string; docType: string }
+    >();
     for (const attachment of emailData.attachments || []) {
       const docType = documentClassifications.get(attachment.id) || 'other';
       try {
@@ -205,8 +246,12 @@ export class FieldExtractionService implements OnModuleInit {
     }
 
     // Build extraction prompt with actual parsed text
-    const extractionPrompt = this.buildExtractionPrompt(emailData, documentClassifications, parsedTexts);
-    
+    const extractionPrompt = this.buildExtractionPrompt(
+      emailData,
+      documentClassifications,
+      parsedTexts,
+    );
+
     if (!this.openai) {
       throw new Error('OpenAI API not configured');
     }
@@ -215,7 +260,7 @@ export class FieldExtractionService implements OnModuleInit {
       // NEW APPROACH: Extract each field separately with its own LLM call
       // Each field gets: businessDescription, extractorLogic, whereToLook, and all documents
       this.logger.log('Starting per-field extraction: One LLM call per field');
-      
+
       const allSchemaFields = this.getAllSchemaFields();
       const extractedData: any = {
         submission: {},
@@ -223,7 +268,7 @@ export class FieldExtractionService implements OnModuleInit {
         coverage: {},
         lossHistory: {},
       };
-      
+
       const fieldExtractions: Array<{
         fieldPath: string;
         fieldName: string;
@@ -236,35 +281,48 @@ export class FieldExtractionService implements OnModuleInit {
         chunkEndIndex?: number;
         llmReasoning?: string;
       }> = [];
-      
+
       const fullResponses: string[] = [];
-      
+
       // Extract fields in parallel batches to speed up processing while respecting rate limits
       const BATCH_SIZE = 5; // Process 5 fields in parallel
       const DELAY_BETWEEN_BATCHES = 1000; // 1 second delay between batches
-      
-      for (let batchStart = 0; batchStart < allSchemaFields.length; batchStart += BATCH_SIZE) {
-        const batchEnd = Math.min(batchStart + BATCH_SIZE, allSchemaFields.length);
+
+      for (
+        let batchStart = 0;
+        batchStart < allSchemaFields.length;
+        batchStart += BATCH_SIZE
+      ) {
+        const batchEnd = Math.min(
+          batchStart + BATCH_SIZE,
+          allSchemaFields.length,
+        );
         const batch = allSchemaFields.slice(batchStart, batchEnd);
-        
-        this.logger.log(`Processing batch ${Math.floor(batchStart / BATCH_SIZE) + 1}/${Math.ceil(allSchemaFields.length / BATCH_SIZE)}: fields ${batchStart + 1}-${batchEnd}`);
-        
+
+        this.logger.log(
+          `Processing batch ${Math.floor(batchStart / BATCH_SIZE) + 1}/${Math.ceil(allSchemaFields.length / BATCH_SIZE)}: fields ${batchStart + 1}-${batchEnd}`,
+        );
+
         // Process batch in parallel
         const batchPromises = batch.map(async (schemaField, index) => {
           const fieldIndex = batchStart + index;
-          this.logger.log(`Extracting field ${fieldIndex + 1}/${allSchemaFields.length}: ${schemaField.path}`);
-          
+          this.logger.log(
+            `Extracting field ${fieldIndex + 1}/${allSchemaFields.length}: ${schemaField.path}`,
+          );
+
           try {
             const fieldResult = await this.extractSingleField(
               schemaField,
               emailData,
               documentClassifications,
-              parsedTexts
+              parsedTexts,
             );
-            
+
             return { success: true, field: schemaField, result: fieldResult };
           } catch (error: any) {
-            this.logger.warn(`Error extracting field ${schemaField.path}: ${error.message}`);
+            this.logger.warn(
+              `Error extracting field ${schemaField.path}: ${error.message}`,
+            );
             return {
               success: false,
               field: schemaField,
@@ -273,21 +331,27 @@ export class FieldExtractionService implements OnModuleInit {
             };
           }
         });
-        
+
         // Wait for batch to complete
         const batchResults = await Promise.all(batchPromises);
-        
+
         // Process results
         for (const batchResult of batchResults) {
           if (batchResult.success && batchResult.result) {
             // Store the extracted value
-            this.setValueByPath(extractedData, batchResult.field.path, batchResult.result.fieldValue);
-            
+            this.setValueByPath(
+              extractedData,
+              batchResult.field.path,
+              batchResult.result.fieldValue,
+            );
+
             // Add to field extractions
             fieldExtractions.push(batchResult.result);
-            
+
             if (batchResult.result.llmResponse) {
-              fullResponses.push(`${batchResult.field.path}: ${batchResult.result.llmResponse}`);
+              fullResponses.push(
+                `${batchResult.field.path}: ${batchResult.result.llmResponse}`,
+              );
             }
           } else {
             // Add null extraction for failed fields
@@ -298,64 +362,96 @@ export class FieldExtractionService implements OnModuleInit {
               source: 'other',
               llmReasoning: `Error during extraction: ${batchResult.error}`,
             });
-            
+
             // If rate limit, wait longer before next batch
-            if (batchResult.isRateLimit && batchStart + BATCH_SIZE < allSchemaFields.length) {
+            if (
+              batchResult.isRateLimit &&
+              batchStart + BATCH_SIZE < allSchemaFields.length
+            ) {
               const waitTime = 5000; // Wait 5 seconds on rate limit
-              this.logger.warn(`Rate limit encountered, waiting ${waitTime}ms before next batch`);
-              await new Promise(resolve => setTimeout(resolve, waitTime));
+              this.logger.warn(
+                `Rate limit encountered, waiting ${waitTime}ms before next batch`,
+              );
+              await new Promise((resolve) => setTimeout(resolve, waitTime));
             }
           }
         }
-        
+
         // Delay between batches (except for last batch)
         if (batchEnd < allSchemaFields.length) {
-          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
+          await new Promise((resolve) =>
+            setTimeout(resolve, DELAY_BETWEEN_BATCHES),
+          );
         }
       }
-      
+
       const fullResponse = fullResponses.join('\n\n');
       const fullPrompt = `Per-field extraction: ${allSchemaFields.length} separate LLM calls, one per field`;
 
       // Log extraction summary
-      const extractedCount = fieldExtractions.filter(fe => 
-        fe.fieldValue !== null && fe.fieldValue !== undefined && fe.fieldValue !== ''
+      const extractedCount = fieldExtractions.filter(
+        (fe) =>
+          fe.fieldValue !== null &&
+          fe.fieldValue !== undefined &&
+          fe.fieldValue !== '',
       ).length;
       const nullCount = fieldExtractions.length - extractedCount;
-      
-      this.logger.log(`Per-field extraction completed: ${fieldExtractions.length} fields processed`);
+
+      this.logger.log(
+        `Per-field extraction completed: ${fieldExtractions.length} fields processed`,
+      );
       this.logger.log(`  ✓ Extracted: ${extractedCount} fields`);
       this.logger.log(`  ✗ Null/Missing: ${nullCount} fields`);
-      
+
       if (nullCount > 0) {
-        this.logger.warn(`Warning: ${nullCount} fields were not extracted. Check document parsing and field definitions.`);
+        this.logger.warn(
+          `Warning: ${nullCount} fields were not extracted. Check document parsing and field definitions.`,
+        );
       }
 
-      return { 
-        data: extractedData, 
+      return {
+        data: extractedData,
         fieldExtractions: fieldExtractions,
         llmPrompt: fullPrompt,
         llmResponse: fullResponse,
       };
     } catch (error: any) {
       this.logger.error('Error in field extraction:', error);
-      
+
       // Handle OpenAI API errors gracefully
-      if (error?.status === 429 || error?.message?.includes('quota') || error?.message?.includes('429')) {
-        this.logger.warn('OpenAI API quota exceeded, using fallback extraction');
-        return this.fallbackExtraction(emailData, documentClassifications, parsedTexts);
+      if (
+        error?.status === 429 ||
+        error?.message?.includes('quota') ||
+        error?.message?.includes('429')
+      ) {
+        this.logger.warn(
+          'OpenAI API quota exceeded, using fallback extraction',
+        );
+        return this.fallbackExtraction(
+          emailData,
+          documentClassifications,
+          parsedTexts,
+        );
       }
-      
+
       if (error?.status === 401 || error?.message?.includes('401')) {
-        throw new Error('OpenAI API key is invalid. Please check your OPENAI_API_KEY environment variable.');
+        throw new Error(
+          'OpenAI API key is invalid. Please check your OPENAI_API_KEY environment variable.',
+        );
       }
-      
+
       // For other errors, try fallback before throwing
       this.logger.warn('OpenAI API error, attempting fallback extraction');
       try {
-        return this.fallbackExtraction(emailData, documentClassifications, parsedTexts);
+        return this.fallbackExtraction(
+          emailData,
+          documentClassifications,
+          parsedTexts,
+        );
       } catch (fallbackError) {
-        throw new Error(`Field extraction failed: ${error.message || String(error)}`);
+        throw new Error(
+          `Field extraction failed: ${error.message || String(error)}`,
+        );
       }
     }
   }
@@ -385,11 +481,11 @@ For each field, return either a concrete value or null if not present.`;
   private buildSystemPromptDataOnly(): string {
     // Build output template (clean shape with null placeholders)
     const outputTemplate = this.buildOutputTemplate();
-    
+
     // Build field definitions reference (for extraction guidance)
     const fieldDefinitions = this.buildFieldDefinitionsReference();
-    
-    let prompt = `You are an expert at extracting structured commercial property insurance submission data from emails and documents.
+
+    const prompt = `You are an expert at extracting structured commercial property insurance submission data from emails and documents.
 
 Your task is to extract data and return ONLY valid JSON matching this exact structure:
 ${JSON.stringify(outputTemplate, null, 2)}
@@ -434,7 +530,7 @@ Return valid JSON only. No explanations, no reasoning, no fieldExtractions - jus
    */
   private buildFieldDefinitionsReference(): string {
     const definitions: string[] = [];
-    
+
     const addFieldDefinition = (schemaObj: any, path: string = '') => {
       if (!schemaObj || typeof schemaObj !== 'object') return;
 
@@ -499,12 +595,14 @@ Return valid JSON only. No explanations, no reasoning, no fieldExtractions - jus
   private buildSystemPromptWithChunks(): string {
     // Build enhanced schema with field definitions
     const enhancedSchema = this.buildEnhancedSchema();
-    
+
     // Log how many fields have extractor logic for debugging
     const fieldsWithLogic = this.countFieldsWithExtractorLogic(enhancedSchema);
-    this.logger.log(`Enhanced schema includes ${fieldsWithLogic} fields with extractorLogic`);
-    
-    let prompt = `You are an expert at extracting structured commercial property insurance submission data from emails and documents.
+    this.logger.log(
+      `Enhanced schema includes ${fieldsWithLogic} fields with extractorLogic`,
+    );
+
+    const prompt = `You are an expert at extracting structured commercial property insurance submission data from emails and documents.
 
 Extract all fields from the provided content according to this schema:
 ${JSON.stringify(enhancedSchema, null, 2)}
@@ -613,11 +711,11 @@ DO NOT skip any fields. Every field in the schema must have a corresponding entr
    */
   private buildEnhancedSchema(): any {
     const enhanced = JSON.parse(JSON.stringify(this.fieldSchema)); // Deep copy
-    
+
     // Helper to recursively add field definitions
     const addFieldDefinitions = (obj: any, path: string = '') => {
       if (!obj || typeof obj !== 'object') return;
-      
+
       if (Array.isArray(obj)) {
         obj.forEach((item, index) => {
           if (typeof item === 'object') {
@@ -626,17 +724,17 @@ DO NOT skip any fields. Every field in the schema must have a corresponding entr
         });
         return;
       }
-      
+
       // Check if this is an array type definition
       if (obj.type === 'array' && obj.items) {
         addFieldDefinitions(obj.items, path);
         return;
       }
-      
+
       // Process object fields
       for (const [key, value] of Object.entries(obj)) {
         const fieldPath = path ? `${path}.${key}` : key;
-        
+
         if (value && typeof value === 'object') {
           if ('type' in value && typeof value.type === 'string') {
             // This is a field definition - enhance it with database info
@@ -652,17 +750,23 @@ DO NOT skip any fields. Every field in the schema must have a corresponding entr
               }
               if (fieldDef.whereToLook) {
                 fieldValue.whereToLook = fieldDef.whereToLook;
-                this.logger.debug(`Enhanced field "${key}" with whereToLook: ${fieldDef.whereToLook}`);
+                this.logger.debug(
+                  `Enhanced field "${key}" with whereToLook: ${fieldDef.whereToLook}`,
+                );
               } else if (fieldValue.whereToLook) {
                 // Keep existing whereToLook from JSON if no DB override
               }
               // Log when we enhance a field with extractor logic
               if (fieldDef.extractorLogic) {
-                this.logger.debug(`Enhanced field "${key}" with extractorLogic (${fieldDef.extractorLogic.substring(0, 50)}...)`);
+                this.logger.debug(
+                  `Enhanced field "${key}" with extractorLogic (${fieldDef.extractorLogic.substring(0, 50)}...)`,
+                );
               }
             } else {
               // Log when a field doesn't have a database definition
-              this.logger.debug(`Field "${key}" at path "${fieldPath}" not found in fieldDefinitions map`);
+              this.logger.debug(
+                `Field "${key}" at path "${fieldPath}" not found in fieldDefinitions map`,
+              );
             }
           } else {
             // Recurse into nested objects
@@ -671,7 +775,7 @@ DO NOT skip any fields. Every field in the schema must have a corresponding entr
         }
       }
     };
-    
+
     addFieldDefinitions(enhanced);
     return enhanced;
   }
@@ -729,7 +833,11 @@ DO NOT skip any fields. Every field in the schema must have a corresponding entr
     if (this.fieldSchema.submission) {
       convertToTemplate(this.fieldSchema.submission, template.submission);
     }
-    if (this.fieldSchema.locations && this.fieldSchema.locations.type === 'array' && this.fieldSchema.locations.items) {
+    if (
+      this.fieldSchema.locations &&
+      this.fieldSchema.locations.type === 'array' &&
+      this.fieldSchema.locations.items
+    ) {
       convertToTemplate(this.fieldSchema.locations, template.locations);
     }
     if (this.fieldSchema.coverage) {
@@ -747,20 +855,20 @@ DO NOT skip any fields. Every field in the schema must have a corresponding entr
    */
   private countFieldsWithExtractorLogic(schema: any): number {
     let count = 0;
-    
+
     const countInObject = (obj: any): void => {
       if (!obj || typeof obj !== 'object') return;
-      
+
       if (Array.isArray(obj)) {
-        obj.forEach(item => countInObject(item));
+        obj.forEach((item) => countInObject(item));
         return;
       }
-      
+
       if (obj.type === 'array' && obj.items) {
         countInObject(obj.items);
         return;
       }
-      
+
       for (const [key, value] of Object.entries(obj)) {
         if (value && typeof value === 'object') {
           if ('type' in value && typeof value.type === 'string') {
@@ -774,7 +882,7 @@ DO NOT skip any fields. Every field in the schema must have a corresponding entr
         }
       }
     };
-    
+
     countInObject(schema);
     return count;
   }
@@ -789,7 +897,9 @@ DO NOT skip any fields. Every field in the schema must have a corresponding entr
   ): string {
     // Log what documents are being included
     const availableDocTypes = Array.from(parsedTexts.keys());
-    this.logger.debug(`Building extraction prompt with document types: ${availableDocTypes.join(', ')}`);
+    this.logger.debug(
+      `Building extraction prompt with document types: ${availableDocTypes.join(', ')}`,
+    );
     // Include email metadata and body - use "email_body" as the source label
     let prompt = `=== email_body ===\n`;
     prompt += `From: ${emailData.from || 'Not available'}\n`;
@@ -799,17 +909,26 @@ DO NOT skip any fields. Every field in the schema must have a corresponding entr
     prompt += `${emailData.body || 'No email body'}\n\n`;
 
     // Add parsed documents grouped by type - section name matches source value exactly
-    const docTypes = ['acord', 'sov', 'loss_run', 'schedule', 'supplemental', 'other'];
-    
+    const docTypes = [
+      'acord',
+      'sov',
+      'loss_run',
+      'schedule',
+      'supplemental',
+      'other',
+    ];
+
     for (const docType of docTypes) {
       const text = parsedTexts.get(docType);
       if (text) {
         // Section name is exactly the source value (e.g., "=== acord ===")
         // Increased limit from 50k to 200k chars per document type to preserve more context
         const maxChars = 200000;
-        const truncated = text.length > maxChars 
-          ? text.substring(0, maxChars) + `\n\n[Document truncated - showing first ${maxChars} characters of ${text.length} total]`
-          : text;
+        const truncated =
+          text.length > maxChars
+            ? text.substring(0, maxChars) +
+              `\n\n[Document truncated - showing first ${maxChars} characters of ${text.length} total]`
+            : text;
         prompt += `=== ${docType} ===\n${truncated}\n\n`;
       }
     }
@@ -836,10 +955,10 @@ If you find a value in the "=== email_body ===" section, use source: "email_body
    */
   private getAllSchemaFields(): Array<{ path: string; name: string }> {
     const fields: Array<{ path: string; name: string }> = [];
-    
+
     const extractFieldsFromSchema = (obj: any, path: string = '') => {
       if (!obj || typeof obj !== 'object') return;
-      
+
       // Check if this is an array type definition
       if (obj.type === 'array' && obj.items) {
         // For arrays, we'll generate fields for index [0] as a template
@@ -847,13 +966,13 @@ If you find a value in the "=== email_body ===" section, use source: "email_body
         extractFieldsFromSchema(obj.items, `${path}[0]`);
         return;
       }
-      
+
       // Iterate through object properties
       for (const [key, value] of Object.entries(obj)) {
         if (!value || typeof value !== 'object') continue;
-        
+
         const currentPath = path ? `${path}.${key}` : key;
-        
+
         // Check if this is a field definition (has 'type' property)
         if ('type' in value && typeof value.type === 'string') {
           // Check if it's an array type with items
@@ -870,7 +989,7 @@ If you find a value in the "=== email_body ===" section, use source: "email_body
         }
       }
     };
-    
+
     // Process each section of the schema separately
     if (this.fieldSchema.submission) {
       extractFieldsFromSchema(this.fieldSchema.submission, 'submission');
@@ -884,8 +1003,10 @@ If you find a value in the "=== email_body ===" section, use source: "email_body
     if (this.fieldSchema.lossHistory) {
       extractFieldsFromSchema(this.fieldSchema.lossHistory, 'lossHistory');
     }
-    
-    this.logger.log(`getAllSchemaFields found ${fields.length} fields in schema`);
+
+    this.logger.log(
+      `getAllSchemaFields found ${fields.length} fields in schema`,
+    );
     return fields;
   }
 
@@ -893,9 +1014,9 @@ If you find a value in the "=== email_body ===" section, use source: "email_body
    * Get value from nested object by path (e.g., "submission.namedInsured" or "locations[0].buildings[0].riskAddress")
    */
   private getValueByPath(obj: any, path: string): any {
-    const parts = path.split(/[\.\[\]]/).filter(p => p);
+    const parts = path.split(/[\.\[\]]/).filter((p) => p);
     let current = obj;
-    
+
     for (const part of parts) {
       if (current === null || current === undefined) return null;
       if (Array.isArray(current)) {
@@ -908,7 +1029,7 @@ If you find a value in the "=== email_body ===" section, use source: "email_body
         return null;
       }
     }
-    
+
     return current;
   }
 
@@ -921,7 +1042,7 @@ If you find a value in the "=== email_body ===" section, use source: "email_body
     const parts: Array<{ key: string; index?: number }> = [];
     let current = '';
     let i = 0;
-    
+
     while (i < path.length) {
       if (path[i] === '.') {
         if (current) {
@@ -953,17 +1074,17 @@ If you find a value in the "=== email_body ===" section, use source: "email_body
         i++;
       }
     }
-    
+
     // Add last part
     if (current) {
       parts.push({ key: current });
     }
-    
+
     // Navigate/create structure
     let currentObj = obj;
     for (let j = 0; j < parts.length - 1; j++) {
       const part = parts[j];
-      
+
       if (part.index !== undefined) {
         // Array access
         if (!currentObj[part.key] || !Array.isArray(currentObj[part.key])) {
@@ -973,24 +1094,34 @@ If you find a value in the "=== email_body ===" section, use source: "email_body
         while (currentObj[part.key].length <= part.index) {
           currentObj[part.key].push({});
         }
-        if (!currentObj[part.key][part.index] || typeof currentObj[part.key][part.index] !== 'object') {
+        if (
+          !currentObj[part.key][part.index] ||
+          typeof currentObj[part.key][part.index] !== 'object'
+        ) {
           currentObj[part.key][part.index] = {};
         }
         currentObj = currentObj[part.key][part.index];
       } else {
         // Object property
-        if (!currentObj[part.key] || typeof currentObj[part.key] !== 'object' || Array.isArray(currentObj[part.key])) {
+        if (
+          !currentObj[part.key] ||
+          typeof currentObj[part.key] !== 'object' ||
+          Array.isArray(currentObj[part.key])
+        ) {
           currentObj[part.key] = {};
         }
         currentObj = currentObj[part.key];
       }
     }
-    
+
     // Set the final value
     const lastPart = parts[parts.length - 1];
     if (lastPart.index !== undefined) {
       // Final value is in an array
-      if (!currentObj[lastPart.key] || !Array.isArray(currentObj[lastPart.key])) {
+      if (
+        !currentObj[lastPart.key] ||
+        !Array.isArray(currentObj[lastPart.key])
+      ) {
         currentObj[lastPart.key] = [];
       }
       while (currentObj[lastPart.key].length <= lastPart.index) {
@@ -1027,20 +1158,27 @@ If you find a value in the "=== email_body ===" section, use source: "email_body
   }> {
     // Get field definition from database
     const fieldDef = this.fieldDefinitions.get(schemaField.name);
-    
+
     // Build single-field system prompt
-    const systemPrompt = this.buildSingleFieldSystemPrompt(schemaField, fieldDef);
-    
+    const systemPrompt = this.buildSingleFieldSystemPrompt(
+      schemaField,
+      fieldDef,
+    );
+
     // Build user prompt with all documents
-    const userPrompt = this.buildExtractionPrompt(emailData, documentClassifications, parsedTexts);
-    
+    const userPrompt = this.buildExtractionPrompt(
+      emailData,
+      documentClassifications,
+      parsedTexts,
+    );
+
     // Add field-specific instruction
     const fieldSpecificPrompt = `${userPrompt}\n\nEXTRACT THIS SPECIFIC FIELD:\nField Path: ${schemaField.path}\nField Name: ${schemaField.name}\n\nReturn a JSON object with this structure:\n{\n  "fieldValue": <extracted value or null>,\n  "source": "<document section where found>",\n  "documentChunk": "<200-500 char excerpt containing the value>",\n  "llmReasoning": "<explanation of extraction process>"\n}`;
-    
+
     // Retry logic for rate limits
     let retries = 3;
     let delay = 1000; // Start with 1 second delay
-    
+
     while (retries > 0) {
       try {
         const response = await this.openai.chat.completions.create({
@@ -1058,47 +1196,59 @@ If you find a value in the "=== email_body ===" section, use source: "email_body
           response_format: { type: 'json_object' },
           temperature: 0.1,
         });
-      
+
         const responseContent = response.choices[0].message.content || '{}';
         const responseData = JSON.parse(responseContent);
-        
+
         const fieldValue = responseData.fieldValue ?? null;
-        const hasValue = fieldValue !== null && fieldValue !== undefined && fieldValue !== '';
-        
+        const hasValue =
+          fieldValue !== null && fieldValue !== undefined && fieldValue !== '';
+
         if (hasValue) {
-          this.logger.log(`✓ Extracted ${schemaField.path}: ${JSON.stringify(fieldValue)} (source: ${responseData.source || 'other'})`);
+          this.logger.log(
+            `✓ Extracted ${schemaField.path}: ${JSON.stringify(fieldValue)} (source: ${responseData.source || 'other'})`,
+          );
         } else {
-          this.logger.debug(`✗ No value found for ${schemaField.path} (source: ${responseData.source || 'other'})`);
+          this.logger.debug(
+            `✗ No value found for ${schemaField.path} (source: ${responseData.source || 'other'})`,
+          );
         }
-        
+
         return {
           fieldPath: schemaField.path,
           fieldName: schemaField.name,
           fieldValue: fieldValue,
           source: responseData.source || 'other',
           documentChunk: responseData.documentChunk || undefined,
-          highlightedText: responseData.documentChunk ? `<mark>${responseData.fieldValue}</mark>` : undefined,
+          highlightedText: responseData.documentChunk
+            ? `<mark>${responseData.fieldValue}</mark>`
+            : undefined,
           llmReasoning: responseData.llmReasoning || undefined,
           llmResponse: responseContent,
         };
       } catch (error: any) {
         // Handle rate limits with retry
         if (error?.status === 429 && retries > 0) {
-          const retryAfter = error.headers?.['retry-after-ms'] 
-            ? parseInt(error.headers['retry-after-ms'], 10) 
+          const retryAfter = error.headers?.['retry-after-ms']
+            ? parseInt(error.headers['retry-after-ms'], 10)
             : delay;
-          this.logger.warn(`Rate limit hit for ${schemaField.path}, retrying in ${retryAfter}ms (${retries} retries left)`);
-          await new Promise(resolve => setTimeout(resolve, retryAfter));
+          this.logger.warn(
+            `Rate limit hit for ${schemaField.path}, retrying in ${retryAfter}ms (${retries} retries left)`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, retryAfter));
           retries--;
           delay *= 2; // Exponential backoff
           continue;
         }
-        
-        this.logger.error(`Error in single field extraction for ${schemaField.path}:`, error);
+
+        this.logger.error(
+          `Error in single field extraction for ${schemaField.path}:`,
+          error,
+        );
         throw error;
       }
     }
-    
+
     // If we exhausted retries, throw the last error
     throw new Error('Failed to extract field after retries');
   }
@@ -1173,7 +1323,8 @@ Be thorough and check ALL available document sections before returning null.`;
     emailData: any,
     documentClassifications: Map<string, string>,
     parsedTexts: Map<string, string>,
-  ): Promise<Array<{
+  ): Promise<
+    Array<{
       fieldPath: string;
       fieldName: string;
       fieldValue: any;
@@ -1184,24 +1335,26 @@ Be thorough and check ALL available document sections before returning null.`;
       chunkStartIndex?: number;
       chunkEndIndex?: number;
       llmReasoning?: string;
-    }>> {
-    
+    }>
+  > {
     if (fieldExtractions.length === 0) {
       this.logger.log('No fields found, skipping reasoning generation');
       return fieldExtractions;
     }
-    
-    this.logger.log(`Getting LLM reasoning for ${fieldExtractions.length} fields (both extracted and null)`);
-    
+
+    this.logger.log(
+      `Getting LLM reasoning for ${fieldExtractions.length} fields (both extracted and null)`,
+    );
+
     // Build a prompt asking for reasoning on all fields
     const allFieldsPrompt = this.buildAllFieldsReasoningPrompt(
       fieldExtractions,
       extractedData,
       emailData,
       documentClassifications,
-      parsedTexts
+      parsedTexts,
     );
-    
+
     try {
       const response = await this.openai.chat.completions.create({
         model: this.configService.get<string>('OPENAI_MODEL') || 'gpt-4o',
@@ -1228,22 +1381,25 @@ Be concise but specific. Return JSON with fieldPath as key and reasoning as valu
         response_format: { type: 'json_object' },
         temperature: 0.1,
       });
-      
+
       const responseContent = response.choices[0].message.content || '{}';
       const reasoningMap = JSON.parse(responseContent);
-      
+
       // Merge reasoning into field extractions
-      const updatedExtractions = fieldExtractions.map(fe => {
-        const reasoning = reasoningMap[fe.fieldPath] || reasoningMap[fe.fieldName];
+      const updatedExtractions = fieldExtractions.map((fe) => {
+        const reasoning =
+          reasoningMap[fe.fieldPath] || reasoningMap[fe.fieldName];
         if (reasoning) {
           return { ...fe, llmReasoning: reasoning };
         }
         return fe;
       });
-      
+
       return updatedExtractions;
     } catch (error: any) {
-      this.logger.warn(`Failed to get LLM reasoning for all fields: ${error.message}`);
+      this.logger.warn(
+        `Failed to get LLM reasoning for all fields: ${error.message}`,
+      );
       // Return original extractions if reasoning fails
       return fieldExtractions;
     }
@@ -1253,7 +1409,11 @@ Be concise but specific. Return JSON with fieldPath as key and reasoning as valu
    * Build prompt for getting reasoning on all fields (extracted and null)
    */
   private buildAllFieldsReasoningPrompt(
-    fieldExtractions: Array<{ fieldPath: string; fieldName: string; fieldValue: any }>,
+    fieldExtractions: Array<{
+      fieldPath: string;
+      fieldName: string;
+      fieldValue: any;
+    }>,
     extractedData: any,
     emailData: any,
     documentClassifications: Map<string, string>,
@@ -1264,10 +1424,13 @@ Be concise but specific. Return JSON with fieldPath as key and reasoning as valu
     for (const field of fieldExtractions) {
       const fieldDef = this.fieldDefinitions.get(field.fieldName);
       const currentValue = field.fieldValue;
-      const valueStatus = (currentValue === null || currentValue === undefined || currentValue === '') 
-        ? 'NULL (not extracted)' 
-        : `EXTRACTED: "${currentValue}"`;
-      
+      const valueStatus =
+        currentValue === null ||
+        currentValue === undefined ||
+        currentValue === ''
+          ? 'NULL (not extracted)'
+          : `EXTRACTED: "${currentValue}"`;
+
       let defText = `\n${field.fieldPath}: ${valueStatus}`;
       if (fieldDef) {
         if (fieldDef.businessDescription) {
@@ -1282,7 +1445,7 @@ Be concise but specific. Return JSON with fieldPath as key and reasoning as valu
       }
       fieldDefs.push(defText);
     }
-    
+
     let prompt = `The following fields were extracted (some successfully, some returned null). For EACH field, explain:
 1. What extraction logic you used
 2. Where you searched
@@ -1291,7 +1454,7 @@ Be concise but specific. Return JSON with fieldPath as key and reasoning as valu
 5. For null fields: Why you couldn't find a value
 
 FIELDS TO EXPLAIN:\n${fieldDefs.join('\n')}\n\n`;
-    
+
     // Include document content for context
     prompt += `DOCUMENT CONTENT:\n`;
     prompt += `=== email_body ===\n`;
@@ -1299,19 +1462,28 @@ FIELDS TO EXPLAIN:\n${fieldDefs.join('\n')}\n\n`;
     prompt += `To: ${emailData.to || 'N/A'}\n`;
     prompt += `Subject: ${emailData.subject || 'N/A'}\n`;
     prompt += `${emailData.body || 'No email body'}\n\n`;
-    
-    const docTypes = ['acord', 'sov', 'loss_run', 'schedule', 'supplemental', 'other'];
+
+    const docTypes = [
+      'acord',
+      'sov',
+      'loss_run',
+      'schedule',
+      'supplemental',
+      'other',
+    ];
     for (const docType of docTypes) {
       const text = parsedTexts.get(docType);
       if (text) {
         const maxChars = 50000; // Smaller chunk for reasoning prompt
-        const truncated = text.length > maxChars 
-          ? text.substring(0, maxChars) + `\n\n[Document truncated - showing first ${maxChars} characters]`
-          : text;
+        const truncated =
+          text.length > maxChars
+            ? text.substring(0, maxChars) +
+              `\n\n[Document truncated - showing first ${maxChars} characters]`
+            : text;
         prompt += `=== ${docType} ===\n${truncated}\n\n`;
       }
     }
-    
+
     prompt += `\nReturn a JSON object where each key is a fieldPath and the value is your reasoning for that field.
 
 For EXTRACTED fields, explain what you found and why:
@@ -1328,7 +1500,7 @@ Example:
   "submission.carrierName": "I first searched the email body, email signature, and ACORD headers as indicated in whereToLook. I looked for patterns like 'Carrier:', 'Insurance Company:', or company names in headers. I then searched all other document sections (SOV, loss runs, schedule, supplemental). I found 'Central States Property Insurance Co.' in the loss runs, but that appears to be the prior carrier, not the target market carrier. After searching all available documents, no target carrier name was found.",
   "submission.brokerPhone": "I first searched the email signature and body as indicated in whereToLook for phone number patterns like (XXX) XXX-XXXX, XXX-XXX-XXXX, or XXX.XXX.XXXX. I then searched all other document sections (ACORD, SOV, loss runs, schedule, supplemental). After checking all available documents, no phone number matching these patterns was found."
 }`;
-    
+
     return prompt;
   }
 
@@ -1341,18 +1513,20 @@ Example:
     emailData: any,
     attachmentTextMap: Map<string, { text: string; docType: string }>,
     documentClassifications: Map<string, string>,
-  ): Promise<Array<{
-    fieldPath: string;
-    fieldName: string;
-    fieldValue: any;
-    source: string;
-    documentId?: string;
-    documentChunk?: string;
-    highlightedText?: string;
-    chunkStartIndex?: number;
-    chunkEndIndex?: number;
-    llmReasoning?: string;
-  }>> {
+  ): Promise<
+    Array<{
+      fieldPath: string;
+      fieldName: string;
+      fieldValue: any;
+      source: string;
+      documentId?: string;
+      documentChunk?: string;
+      highlightedText?: string;
+      chunkStartIndex?: number;
+      chunkEndIndex?: number;
+      llmReasoning?: string;
+    }>
+  > {
     const fieldExtractions: Array<{
       fieldPath: string;
       fieldName: string;
@@ -1368,23 +1542,37 @@ Example:
 
     // Get ALL fields from schema (not just ones in extractedData)
     const schemaFields = this.getAllSchemaFields();
-    
+
     // Also get fields from extractedData to handle array indices properly
-    const flattenObject = (obj: any, prefix = '', path = ''): Array<{ path: string; name: string; value: any }> => {
+    const flattenObject = (
+      obj: any,
+      prefix = '',
+      path = '',
+    ): Array<{ path: string; name: string; value: any }> => {
       const fields: Array<{ path: string; name: string; value: any }> = [];
-      
+
       for (const key in obj) {
         const currentPath = path ? `${path}.${key}` : key;
         const value = obj[key];
-        
+
         if (value === null || value === undefined) {
           fields.push({ path: currentPath, name: key, value: null });
         } else if (Array.isArray(value)) {
           value.forEach((item, index) => {
             if (typeof item === 'object' && item !== null) {
-              fields.push(...flattenObject(item, `${currentPath}[${index}]`, `${currentPath}[${index}]`));
+              fields.push(
+                ...flattenObject(
+                  item,
+                  `${currentPath}[${index}]`,
+                  `${currentPath}[${index}]`,
+                ),
+              );
             } else {
-              fields.push({ path: `${currentPath}[${index}]`, name: key, value: item });
+              fields.push({
+                path: `${currentPath}[${index}]`,
+                name: key,
+                value: item,
+              });
             }
           });
         } else if (typeof value === 'object') {
@@ -1393,7 +1581,7 @@ Example:
           fields.push({ path: currentPath, name: key, value });
         }
       }
-      
+
       return fields;
     };
 
@@ -1402,14 +1590,14 @@ Example:
     for (const field of extractedFields) {
       extractedFieldsMap.set(field.path, field.value);
     }
-    
+
     // Process ALL schema fields
     const allFieldsToProcess = new Set<string>();
-    
+
     // Add all schema fields
     for (const schemaField of schemaFields) {
       allFieldsToProcess.add(schemaField.path);
-      
+
       // For array fields, also check if there are actual array items in extractedData
       if (schemaField.path.includes('[0]')) {
         const basePath = schemaField.path.replace('[0]', '');
@@ -1423,25 +1611,32 @@ Example:
         }
       }
     }
-    
+
     // Also add any fields from extractedData that aren't in schema (for backwards compatibility)
     for (const field of extractedFields) {
       allFieldsToProcess.add(field.path);
     }
-    
+
     // Process ALL fields (from schema + extracted data)
     for (const fieldPath of allFieldsToProcess) {
       // Get field name from path
-      const pathParts = fieldPath.split(/[\.\[\]]/).filter(p => p);
+      const pathParts = fieldPath.split(/[\.\[\]]/).filter((p) => p);
       const fieldName = pathParts[pathParts.length - 1] || fieldPath;
-      
+
       // Get value from extractedData (or null if not present)
-      const fieldValue = extractedFieldsMap.get(fieldPath) ?? this.getValueByPath(extractedData, fieldPath) ?? null;
-      
+      const fieldValue =
+        extractedFieldsMap.get(fieldPath) ??
+        this.getValueByPath(extractedData, fieldPath) ??
+        null;
+
       // Create field object for processing
       const field = { path: fieldPath, name: fieldName, value: fieldValue };
-      
-      if (field.value === null || field.value === undefined || field.value === '') {
+
+      if (
+        field.value === null ||
+        field.value === undefined ||
+        field.value === ''
+      ) {
         // Create extraction record for null values WITHOUT chunks (no value found, nothing to show)
         fieldExtractions.push({
           fieldPath: field.path,
@@ -1456,28 +1651,38 @@ Example:
       // Also try normalized versions (remove commas, dollar signs, etc.)
       const normalizedValue = searchValue.replace(/[,$%]/g, '').trim();
       let found = false;
-      let bestMatch: { source: string; chunk: ReturnType<typeof this.extractChunk>; documentId?: string } | null = null;
+      let bestMatch: {
+        source: string;
+        chunk: ReturnType<typeof this.extractChunk>;
+        documentId?: string;
+      } | null = null;
 
       // Search in email body first
       if (emailData.body) {
         const bodyLower = emailData.body.toLowerCase();
         let index = bodyLower.indexOf(searchValue);
-        
+
         // If exact match not found, try normalized search
         if (index === -1 && normalizedValue) {
           const bodyNormalized = bodyLower.replace(/[,$%]/g, '');
           const normalizedIndex = bodyNormalized.indexOf(normalizedValue);
           if (normalizedIndex !== -1) {
             // Map back to original text position (approximate)
-            index = this.findApproximatePosition(emailData.body, normalizedIndex, normalizedValue.length);
+            index = this.findApproximatePosition(
+              emailData.body,
+              normalizedIndex,
+              normalizedValue.length,
+            );
           }
         }
-        
+
         // If still not found, try searching for field name near the value
         if (index === -1) {
           const fieldNamePattern = new RegExp(
-            this.escapeRegex(field.name.replace(/([A-Z])/g, ' $1').toLowerCase()),
-            'i'
+            this.escapeRegex(
+              field.name.replace(/([A-Z])/g, ' $1').toLowerCase(),
+            ),
+            'i',
           );
           const fieldNameMatch = emailData.body.match(fieldNamePattern);
           if (fieldNameMatch && fieldNameMatch.index !== undefined) {
@@ -1485,9 +1690,13 @@ Example:
             index = fieldNameMatch.index;
           }
         }
-        
+
         if (index !== -1) {
-          const chunk = this.extractChunk(emailData.body, index, searchValue.length || 50);
+          const chunk = this.extractChunk(
+            emailData.body,
+            index,
+            searchValue.length || 50,
+          );
           bestMatch = { source: 'email_body', chunk };
           found = true;
         }
@@ -1495,33 +1704,46 @@ Example:
 
       // Search in attachments if not found in email body
       if (!found) {
-        for (const [attachmentId, { text, docType }] of attachmentTextMap.entries()) {
+        for (const [
+          attachmentId,
+          { text, docType },
+        ] of attachmentTextMap.entries()) {
           const textLower = text.toLowerCase();
           let index = textLower.indexOf(searchValue);
-          
+
           // If exact match not found, try normalized search
           if (index === -1 && normalizedValue) {
             const textNormalized = textLower.replace(/[,$%]/g, '');
             const normalizedIndex = textNormalized.indexOf(normalizedValue);
             if (normalizedIndex !== -1) {
-              index = this.findApproximatePosition(text, normalizedIndex, normalizedValue.length);
+              index = this.findApproximatePosition(
+                text,
+                normalizedIndex,
+                normalizedValue.length,
+              );
             }
           }
-          
+
           // If still not found, try searching for field name
           if (index === -1) {
             const fieldNamePattern = new RegExp(
-              this.escapeRegex(field.name.replace(/([A-Z])/g, ' $1').toLowerCase()),
-              'i'
+              this.escapeRegex(
+                field.name.replace(/([A-Z])/g, ' $1').toLowerCase(),
+              ),
+              'i',
             );
             const fieldNameMatch = text.match(fieldNamePattern);
             if (fieldNameMatch && fieldNameMatch.index !== undefined) {
               index = fieldNameMatch.index;
             }
           }
-          
+
           if (index !== -1) {
-            const chunk = this.extractChunk(text, index, searchValue.length || 50);
+            const chunk = this.extractChunk(
+              text,
+              index,
+              searchValue.length || 50,
+            );
             bestMatch = { source: docType, chunk, documentId: attachmentId };
             found = true;
             break;
@@ -1552,7 +1774,7 @@ Example:
           const bodyLower = emailData.body.toLowerCase();
           const valueLower = valueStr.toLowerCase();
           let valueIndex = bodyLower.indexOf(valueLower);
-          
+
           // If value not found, try normalized search
           if (valueIndex === -1 && valueStr) {
             const normalizedValue = valueLower.replace(/[,$%]/g, '').trim();
@@ -1560,30 +1782,44 @@ Example:
               const bodyNormalized = bodyLower.replace(/[,$%]/g, '');
               const normalizedIndex = bodyNormalized.indexOf(normalizedValue);
               if (normalizedIndex !== -1) {
-                valueIndex = this.findApproximatePosition(emailData.body, normalizedIndex, normalizedValue.length);
+                valueIndex = this.findApproximatePosition(
+                  emailData.body,
+                  normalizedIndex,
+                  normalizedValue.length,
+                );
               }
             }
           }
-          
+
           // If value found, extract chunk around it
           if (valueIndex !== -1) {
-            defaultChunk = this.extractChunk(emailData.body, valueIndex, valueStr.length);
+            defaultChunk = this.extractChunk(
+              emailData.body,
+              valueIndex,
+              valueStr.length,
+            );
           } else {
             // Try to find field name in email body
             const fieldNamePattern = new RegExp(
-              this.escapeRegex(field.name.replace(/([A-Z])/g, ' $1').toLowerCase()),
-              'i'
+              this.escapeRegex(
+                field.name.replace(/([A-Z])/g, ' $1').toLowerCase(),
+              ),
+              'i',
             );
             const fieldNameMatch = emailData.body.match(fieldNamePattern);
             if (fieldNameMatch && fieldNameMatch.index !== undefined) {
-              defaultChunk = this.extractChunk(emailData.body, fieldNameMatch.index, 50);
+              defaultChunk = this.extractChunk(
+                emailData.body,
+                fieldNameMatch.index,
+                50,
+              );
             } else {
               // Extract a general chunk from the beginning of email body
               defaultChunk = this.extractChunk(emailData.body, 0, 200);
             }
           }
         }
-        
+
         const extractionRecord: {
           fieldPath: string;
           fieldName: string;
@@ -1599,16 +1835,19 @@ Example:
           fieldValue: field.value,
           source: 'email_body', // Default
         };
-        
+
         // Always include chunk if email body exists
         if (defaultChunk) {
           extractionRecord.documentChunk = defaultChunk.text;
           // Try to highlight the value in the chunk
           const valueStr = String(field.value);
-          if (valueStr && defaultChunk.text.toLowerCase().includes(valueStr.toLowerCase())) {
+          if (
+            valueStr &&
+            defaultChunk.text.toLowerCase().includes(valueStr.toLowerCase())
+          ) {
             extractionRecord.highlightedText = defaultChunk.text.replace(
               new RegExp(this.escapeRegex(valueStr), 'gi'),
-              (match) => `<mark>${match}</mark>`
+              (match) => `<mark>${match}</mark>`,
             );
           } else {
             // If value not in chunk, just use the chunk as-is
@@ -1624,7 +1863,7 @@ Example:
           extractionRecord.chunkStartIndex = minimalChunk.startIndex;
           extractionRecord.chunkEndIndex = minimalChunk.endIndex;
         }
-        
+
         fieldExtractions.push(extractionRecord);
       }
     }
@@ -1639,13 +1878,24 @@ Example:
     fullText: string,
     valueIndex: number,
     valueLength: number,
-  ): { text: string; highlighted: string; startIndex: number; endIndex: number } {
+  ): {
+    text: string;
+    highlighted: string;
+    startIndex: number;
+    endIndex: number;
+  } {
     const contextSize = 200; // Characters before and after
     const startIndex = Math.max(0, valueIndex - contextSize);
-    const endIndex = Math.min(fullText.length, valueIndex + valueLength + contextSize);
-    
+    const endIndex = Math.min(
+      fullText.length,
+      valueIndex + valueLength + contextSize,
+    );
+
     const chunk = fullText.substring(startIndex, endIndex);
-    const valueInChunk = fullText.substring(valueIndex, valueIndex + valueLength);
+    const valueInChunk = fullText.substring(
+      valueIndex,
+      valueIndex + valueLength,
+    );
     const highlighted = chunk.replace(
       new RegExp(this.escapeRegex(valueInChunk), 'gi'),
       (match) => `<mark>${match}</mark>`,
@@ -1670,7 +1920,11 @@ Example:
    * Find approximate position in original text after normalization
    * This is a helper to map normalized positions back to original text
    */
-  private findApproximatePosition(originalText: string, normalizedIndex: number, length: number): number {
+  private findApproximatePosition(
+    originalText: string,
+    normalizedIndex: number,
+    length: number,
+  ): number {
     // Simple approach: count characters in original text, skipping special chars
     let normalizedCount = 0;
     for (let i = 0; i < originalText.length; i++) {
@@ -1694,9 +1948,14 @@ Example:
     emailData: any,
     documentClassifications: Map<string, string>,
     parsedTexts: Map<string, string>,
-  ): Promise<{ data: any; fieldExtractions: Array<any>; llmPrompt?: string | null; llmResponse?: string | null }> {
+  ): Promise<{
+    data: any;
+    fieldExtractions: Array<any>;
+    llmPrompt?: string | null;
+    llmResponse?: string | null;
+  }> {
     this.logger.log('Using fallback extraction (no LLM)');
-    
+
     const extracted: any = {
       submission: {},
       locations: [],
@@ -1705,18 +1964,19 @@ Example:
     };
 
     // Combine all text for searching
-    const allText = [
-      emailData.body || '',
-      ...Array.from(parsedTexts.values()),
-    ].join('\n\n').toLowerCase();
+    const allText = [emailData.body || '', ...Array.from(parsedTexts.values())]
+      .join('\n\n')
+      .toLowerCase();
 
     // Simple pattern matching for common fields
     const patterns: Record<string, RegExp> = {
-      namedInsured: /(?:named\s+insured|insured\s+name|company\s+name)[\s:]+([^\n]+)/i,
+      namedInsured:
+        /(?:named\s+insured|insured\s+name|company\s+name)[\s:]+([^\n]+)/i,
       carrierName: /(?:carrier|insurance\s+company|insurer)[\s:]+([^\n]+)/i,
       brokerName: /(?:broker|agent)[\s:]+([^\n]+)/i,
       effectiveDate: /(?:effective\s+date|policy\s+start)[\s:]+([^\n]+)/i,
-      expirationDate: /(?:expiration\s+date|expiry|policy\s+end)[\s:]+([^\n]+)/i,
+      expirationDate:
+        /(?:expiration\s+date|expiry|policy\s+end)[\s:]+([^\n]+)/i,
     };
 
     for (const [field, pattern] of Object.entries(patterns)) {
@@ -1727,25 +1987,38 @@ Example:
     }
 
     // Extract building square footage
-    const sqftMatch = allText.match(/(\d+(?:,\d+)*)\s*(?:sq\s*ft|square\s*feet|sf)/i);
+    const sqftMatch = allText.match(
+      /(\d+(?:,\d+)*)\s*(?:sq\s*ft|square\s*feet|sf)/i,
+    );
     if (sqftMatch) {
-      extracted.locations = [{
-        locationNumber: 1,
-        buildings: [{
-          buildingNumber: 1,
-          buildingSqFt: parseInt(sqftMatch[1].replace(/,/g, ''), 10),
-        }],
-      }];
+      extracted.locations = [
+        {
+          locationNumber: 1,
+          buildings: [
+            {
+              buildingNumber: 1,
+              buildingSqFt: parseInt(sqftMatch[1].replace(/,/g, ''), 10),
+            },
+          ],
+        },
+      ];
     }
 
     // Extract building limit
-    const limitMatch = allText.match(/\$(\d+(?:,\d+)*(?:\.\d+)?)\s*(?:building\s+limit|coverage\s+limit)/i);
+    const limitMatch = allText.match(
+      /\$(\d+(?:,\d+)*(?:\.\d+)?)\s*(?:building\s+limit|coverage\s+limit)/i,
+    );
     if (limitMatch) {
-      extracted.coverage.buildingLimit = parseFloat(limitMatch[1].replace(/,/g, ''));
+      extracted.coverage.buildingLimit = parseFloat(
+        limitMatch[1].replace(/,/g, ''),
+      );
     }
 
     // Generate field extractions for fallback
-    const attachmentTextMap = new Map<string, { text: string; docType: string }>();
+    const attachmentTextMap = new Map<
+      string,
+      { text: string; docType: string }
+    >();
     for (const [docType, text] of parsedTexts.entries()) {
       // For fallback, we don't have individual attachment mapping, so use docType as key
       attachmentTextMap.set(docType, { text, docType });
@@ -1759,8 +2032,8 @@ Example:
     );
 
     this.logger.log('Fallback extraction completed with basic fields');
-    return { 
-      data: extracted, 
+    return {
+      data: extracted,
       fieldExtractions,
       llmPrompt: undefined, // Fallback doesn't use LLM
       llmResponse: undefined,
@@ -1798,4 +2071,3 @@ Example:
     };
   }
 }
-
