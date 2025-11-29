@@ -398,21 +398,6 @@ function FieldDetailsView({
           <div className="text-sm text-slate-600">{field.source}</div>
         </div>
 
-        {fieldDef && (
-          <>
-            <div>
-              <div className="text-sm font-medium text-slate-700">Extractor Logic</div>
-              <div className="text-sm text-slate-600 bg-blue-50 p-3 rounded border border-blue-200">
-                {fieldDef.extractorLogic || 'No extractor logic defined'}
-              </div>
-            </div>
-            <div>
-              <div className="text-sm font-medium text-slate-700">Where to Look</div>
-              <div className="text-sm text-slate-600">{fieldDef.whereToLook || 'Not specified'}</div>
-            </div>
-          </>
-        )}
-
         <div>
           <div className="text-sm font-medium text-slate-700 mb-2">LLM Reasoning</div>
           {(field.llmReasoning || reasoning?.llmReasoning) ? (
