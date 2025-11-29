@@ -76,6 +76,27 @@ function DebugExtractorsContent() {
     return fields;
   }, []);
 
+  const loadSchemaFields = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_URL}/field-schema`);
+      if (response.ok) {
+        const schema = await response.json();
+        const fields = getAllFieldsFromSchema(schema);
+        console.log('Loaded schema fields:', fields.length);
+        setAllSchemaFields(fields);
+      } else {
+        console.error('Failed to load schema fields:', response.status);
+      }
+    } catch (err) {
+      console.error('Error loading schema fields:', err);
+    }
+  }, [getAllFieldsFromSchema]);
+
+  useEffect(() => {
+    loadSubmissions();
+    loadSchemaFields();
+  }, [loadSchemaFields]);
+
   const loadSubmissions = async () => {
     try {
       setLoading(true);
