@@ -1,12 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import ConditionalHeader from '@/components/ConditionalHeader';
 import { getApiUrl } from '@/lib/api-url';
 const API_URL = getApiUrl();
 
 export default function Home() {
-  // Authentication check is handled by ConditionalHeader component
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', message: '' });
   const [submitting, setSubmitting] = useState(false);
@@ -43,7 +41,6 @@ export default function Home() {
 
   return (
     <div className="bg-slate-50 min-h-screen">
-      <ConditionalHeader />
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
