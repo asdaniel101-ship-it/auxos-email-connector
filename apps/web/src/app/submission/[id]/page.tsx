@@ -305,7 +305,7 @@ function SubmissionPageContent() {
                       const buildingData = building as Record<string, unknown>;
                       
                       // Render all building fields from schema
-                      Object.entries(buildingSchema).forEach(([buildingKey, _buildingSchemaValue]) => {
+                      Object.entries(buildingSchema).forEach(([buildingKey]) => {
                         const buildingValue = buildingData[buildingKey] !== undefined ? buildingData[buildingKey] : null;
                         const buildingFieldPath = prefix ? `${prefix}[${index}].buildings[${buildingIndex}].${buildingKey}` : `${index}.buildings[${buildingIndex}].${buildingKey}`;
                         const buildingFieldName = buildingKey
