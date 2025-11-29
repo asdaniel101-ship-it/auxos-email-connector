@@ -189,7 +189,7 @@ function FieldSchemaAdminContent() {
         if (!obj || typeof obj !== 'object') return;
 
         if (obj.type === 'array' && obj.items) {
-          extractFields(obj.items, category, path);
+          extractFields(obj.items as Record<string, unknown>, category, path);
           return;
         }
 
@@ -223,7 +223,7 @@ function FieldSchemaAdminContent() {
             } else {
               // Determine category from path
               const newCategory = determineCategory(fieldPath);
-              extractFields(value, newCategory, fieldPath);
+              extractFields(value as Record<string, unknown>, newCategory, fieldPath);
             }
           }
         }
@@ -476,16 +476,16 @@ function FieldSchemaAdminContent() {
                     {dbDef?.businessDescription || field.description}
                   </p>
                 )}
-                {(dbDef?.extractorLogic || (field as Record<string, unknown>).extractorLogic) && (
+                {(dbDef?.extractorLogic || (field as unknown as Record<string, unknown>).extractorLogic) && (
                   <div className="text-xs">
                     <span className="font-medium text-slate-600">Extraction Logic:</span>
-                    <p className="text-slate-500 mt-0.5">{dbDef?.extractorLogic || (field as Record<string, unknown>).extractorLogic}</p>
+                    <p className="text-slate-500 mt-0.5">{String(dbDef?.extractorLogic || (field as unknown as Record<string, unknown>).extractorLogic || '')}</p>
                   </div>
                 )}
-                {(dbDef?.whereToLook || (field as Record<string, unknown>).whereToLook) && (
+                {(dbDef?.whereToLook || (field as unknown as Record<string, unknown>).whereToLook) && (
                   <div className="text-xs">
                     <span className="font-medium text-slate-600">Where to Look:</span>
-                    <p className="text-slate-500 mt-0.5">{dbDef?.whereToLook || (field as Record<string, unknown>).whereToLook}</p>
+                    <p className="text-slate-500 mt-0.5">{String(dbDef?.whereToLook || (field as unknown as Record<string, unknown>).whereToLook || '')}</p>
                   </div>
                 )}
               </div>
