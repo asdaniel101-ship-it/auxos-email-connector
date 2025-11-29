@@ -320,7 +320,6 @@ function DebugExtractorsContent() {
             {selectedField ? (
               <FieldDetailsView
                 field={selectedField}
-                submission={selectedSubmission!}
                 extractionResult={selectedSubmission!.extractionResult!}
               />
             ) : (
