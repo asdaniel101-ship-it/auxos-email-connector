@@ -94,7 +94,7 @@ function FieldSchemaAdminContent() {
             } else if ('type' in value && value.type === 'array' && 'items' in value) {
               count += countAllFields(value.items as Record<string, unknown>);
             } else {
-              count += countAllFields(value);
+              count += countAllFields(value as Record<string, unknown>);
             }
           }
         }
