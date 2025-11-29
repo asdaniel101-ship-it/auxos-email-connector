@@ -478,21 +478,21 @@ function FieldSchemaAdminContent() {
                 )}
                 {(() => {
                   const extractorLogic = dbDef?.extractorLogic || (field as unknown as Record<string, unknown>).extractorLogic;
-                  return extractorLogic && (
+                  return extractorLogic ? (
                     <div className="text-xs">
                       <span className="font-medium text-slate-600">Extraction Logic:</span>
                       <p className="text-slate-500 mt-0.5">{String(extractorLogic)}</p>
                     </div>
-                  );
+                  ) : null;
                 })()}
                 {(() => {
                   const whereToLook = dbDef?.whereToLook || (field as unknown as Record<string, unknown>).whereToLook;
-                  return whereToLook && (
+                  return whereToLook ? (
                     <div className="text-xs">
                       <span className="font-medium text-slate-600">Where to Look:</span>
                       <p className="text-slate-500 mt-0.5">{String(whereToLook)}</p>
                     </div>
-                  );
+                  ) : null;
                 })()}
               </div>
             ) : (
