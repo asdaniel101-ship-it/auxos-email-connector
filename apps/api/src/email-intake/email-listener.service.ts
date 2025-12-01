@@ -540,7 +540,7 @@ export class EmailListenerService {
    * Uses getPartData to fetch the complete message (root part contains entire RFC822)
    */
   async fetchAndStoreEmail(uid: number): Promise<any> {
-    this.logger.log(`Fetching email from IMAP: ${uid}`);
+      // Fetching email (silent operation)
 
     let connection: imaps.ImapSimple | null = null;
     try {
@@ -741,29 +741,7 @@ export class EmailListenerService {
           : null) ||
         '(unknown)';
 
-      this.logger.log(`Parsed email UID ${uid}:`);
-      this.logger.log(`  - Subject: "${parsed.subject || '(no subject)'}"`);
-      this.logger.log(`  - From: "${fromText}"`);
-      this.logger.log(
-        `  - Message-ID: "${parsed.messageId || '(no Message-ID)'}"`,
-      );
-      this.logger.log(`  - In-Reply-To: "${parsed.inReplyTo || '(none)'}"`);
-      this.logger.log(`  - References: "${parsed.references || '(none)'}"`);
-      this.logger.log(
-        `  - Body length: ${(parsed.text || parsed.html || '').length}`,
-      );
-      this.logger.log(
-        `  - Attachments found: ${parsed.attachments?.length || 0}`,
-      );
-      if (parsed.attachments && parsed.attachments.length > 0) {
-        parsed.attachments.forEach((att: any, idx: number) => {
-          this.logger.log(
-            `    Attachment ${idx + 1}: ${att.filename || 'unnamed'} (${att.contentType || 'unknown type'}, ${att.length || 'unknown size'} bytes)`,
-          );
-        });
-      } else {
-        this.logger.warn(`  - No attachments found in parsed email!`);
-      }
+      // Removed verbose email parsing logs - keep logs clean
 
       // Mark email as read
       try {
@@ -795,7 +773,7 @@ export class EmailListenerService {
    * Also checks recent emails (last 24 hours) in case they were already read
    */
   async getNewMessages(): Promise<number[]> {
-    this.logger.log('Fetching new messages from IMAP');
+      // Fetching new messages from IMAP (silent operation)
 
     try {
       const connection = await this.connectImap();
