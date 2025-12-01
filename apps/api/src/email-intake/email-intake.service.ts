@@ -62,14 +62,24 @@ export class EmailIntakeService {
           return null; // Signal to skip processing
         }
 
-        // If status is 'done' or 'error', we still process it if it's unread in Gmail
-        // The atomic update below will change status to 'processing', preventing duplicates
-
-        // Atomically update to 'processing' status
-        await tx.emailMessage.update({
-          where: { gmailMessageId },
+        // CRITICAL: Use conditional update to prevent race conditions
+        // Only update if status is NOT 'processing' (atomic check-and-set)
+        // This ensures only one process can claim the email for processing
+        const updateResult = await tx.emailMessage.updateMany({
+          where: {
+            gmailMessageId,
+            processingStatus: { not: 'processing' }, // Only update if not already processing
+          },
           data: { processingStatus: 'processing' },
         });
+
+        // If updateResult.count is 0, another process already claimed it
+        if (updateResult.count === 0) {
+          this.logger.log(
+            `Email ${gmailMessageId} was claimed by another process, skipping duplicate`,
+          );
+          return null; // Signal to skip processing
+        }
 
         return existing;
       });

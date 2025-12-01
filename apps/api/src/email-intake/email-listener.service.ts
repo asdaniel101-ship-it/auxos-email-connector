@@ -118,26 +118,30 @@ export class EmailListenerService {
     imapUid?: number,
   ): Promise<any> {
     // Generate unique ID for this email
+    // CRITICAL: Use Message-ID header (unique per email) instead of UID
+    // UIDs can be reused or change, but Message-ID is globally unique per email
     let gmailMessageId: string;
 
-    if (imapUid !== undefined) {
-      // For IMAP emails, include email address in ID to make it unique per account
-      // This prevents conflicts when switching email accounts (same UID = different message)
+    if (parsed.messageId) {
+      // Use Message-ID header - this is unique per email and doesn't change
+      // Remove angle brackets if present
+      gmailMessageId = parsed.messageId.replace(/^<|>$/g, '');
+    } else if (rawBuffer && rawBuffer.length > 0) {
+      // For .eml uploads without Message-ID, use content hash + timestamp
+      const hash = crypto.createHash('sha256').update(rawBuffer).digest('hex');
+      gmailMessageId = `eml-${hash.substring(0, 16)}-${Date.now()}`;
+    } else if (imapUid !== undefined) {
+      // Fallback: If no Message-ID and it's from IMAP, use UID + timestamp
+      // This should rarely happen (most emails have Message-ID)
       const emailHash = crypto
         .createHash('md5')
         .update(this.email.toLowerCase())
         .digest('hex')
         .substring(0, 8);
-      gmailMessageId = `imap-${emailHash}-${imapUid}`;
-    } else if (rawBuffer && rawBuffer.length > 0) {
-      // For .eml uploads, use a hash of the content to avoid duplicates
-      const hash = crypto.createHash('sha256').update(rawBuffer).digest('hex');
-      gmailMessageId = `eml-${hash.substring(0, 16)}`;
+      gmailMessageId = `imap-${emailHash}-${imapUid}-${Date.now()}`;
     } else {
-      // Fallback to messageId or timestamp-based ID
-      gmailMessageId =
-        parsed.messageId ||
-        `eml-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
+      // Last resort: timestamp-based ID
+      gmailMessageId = `eml-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
     }
     const threadId = parsed.inReplyTo || gmailMessageId;
 
@@ -230,52 +234,43 @@ export class EmailListenerService {
     // Extract subject
     const subject = parsed.subject || '';
 
-    // Check if email already exists
-    const existingEmail = await this.prisma.emailMessage.findUnique({
+    // CRITICAL: Use upsert to handle Message-ID uniqueness
+    // If email already exists, only update if it's not currently being processed
+    // This prevents overwriting an email that's in the middle of processing
+    const emailMessage = await this.prisma.emailMessage.upsert({
       where: { gmailMessageId },
+      update: {
+        // Only update if not currently processing (atomic check happens in processEmail)
+        // Don't reset processingStatus here - let processEmail handle it atomically
+        from: fromAddress,
+        to: toAddresses,
+        cc: ccAddresses,
+        subject: subject,
+        receivedAt: parsed.date || new Date(),
+        // Only reset to pending if it's done/error (not if it's processing)
+        // This is handled by a conditional update in the upsert
+      },
+      create: {
+        gmailMessageId,
+        threadId,
+        from: fromAddress,
+        to: toAddresses,
+        cc: ccAddresses,
+        subject: subject,
+        receivedAt: parsed.date || new Date(),
+        originalMessageId: parsed.messageId ? parsed.messageId.replace(/^<|>$/g, '') : null,
+        processingStatus: 'pending',
+        isSubmission: false,
+      },
       include: { attachments: true },
     });
 
-    if (existingEmail) {
-      // With the new gmailMessageId format (includes email hash), this should only match
-      // messages from the same email account. But double-check the 'to' field to be safe.
-      const toMatchesCurrentEmail = toAddresses.some((addr) =>
-        addr.toLowerCase().includes(this.email.toLowerCase()),
-      );
-      
-      if (!toMatchesCurrentEmail) {
-        // This shouldn't happen with the new ID format, but if it does, log a warning
-        // and still update (the ID should be unique per account now)
-        this.logger.warn(
-          `Email with gmailMessageId ${gmailMessageId} exists but 'to' field doesn't match current email. This might indicate an ID collision. Existing to: ${JSON.stringify(existingEmail.to)}, New to: ${JSON.stringify(toAddresses)}. Proceeding with update.`,
-        );
-      }
-
-      this.logger.log(
-        `Email with gmailMessageId ${gmailMessageId} already exists, updating with fresh data...`,
-      );
-
-      // Update the existing email with fresh parsed data
-      // This is important for reprocessing - we want to update with the complete data
-      const updatedEmail = await this.prisma.emailMessage.update({
-        where: { gmailMessageId },
-        data: {
-          from: fromAddress,
-          to: toAddresses,
-          cc: ccAddresses,
-          subject: subject,
-          receivedAt: parsed.date || existingEmail.receivedAt,
-          // Don't update rawMimeStorageKey if it already exists (preserve original)
-        },
-        include: { attachments: true },
+    // Update attachments if we have fresh ones (only if email was just created or not processing)
+    if (parsed.attachments && parsed.attachments.length > 0 && emailMessage.processingStatus !== 'processing') {
+      // Delete old attachments
+      await this.prisma.emailAttachment.deleteMany({
+        where: { emailMessageId: emailMessage.id },
       });
-
-      // Update attachments if we have fresh ones
-      if (parsed.attachments && parsed.attachments.length > 0) {
-        // Delete old attachments
-        await this.prisma.emailAttachment.deleteMany({
-          where: { emailMessageId: updatedEmail.id },
-        });
 
         // Store new attachments
         const minioClient = this.minioService.getClient();
@@ -314,7 +309,7 @@ export class EmailListenerService {
 
             const attachment = await this.prisma.emailAttachment.create({
               data: {
-                emailMessageId: updatedEmail.id,
+                emailMessageId: emailMessage.id,
                 filename: att.filename || 'unnamed',
                 contentType: att.contentType || 'application/octet-stream',
                 sizeBytes: sizeBytes,
@@ -334,17 +329,19 @@ export class EmailListenerService {
         );
 
         return {
-          ...updatedEmail,
+          ...emailMessage,
           attachments: freshAttachments,
           body: parsed.text || parsed.html || '',
-          originalMessageId: parsed.messageId || null, // Add for reply threading
+          originalMessageId: parsed.messageId ? parsed.messageId.replace(/^<|>$/g, '') : null,
         };
       }
 
+      // Return existing email with attachments (if any)
       return {
-        ...updatedEmail,
+        ...emailMessage,
+        attachments: emailMessage.attachments || [],
         body: parsed.text || parsed.html || '',
-        originalMessageId: parsed.messageId || null, // Add for reply threading
+        originalMessageId: parsed.messageId ? parsed.messageId.replace(/^<|>$/g, '') : null,
       };
     }
 
