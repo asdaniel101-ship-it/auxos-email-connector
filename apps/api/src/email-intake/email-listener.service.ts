@@ -995,45 +995,34 @@ export class EmailListenerService {
         });
       }
 
-      // Also check if there are messages with other statuses that should be retried
+      // CRITICAL: Do NOT retry emails with 'pending', 'error', or 'processing' status
+      // These emails may be stuck in a bad state. Instead, mark them as 'done' to prevent loops.
+      // If an email needs reprocessing, it should be done manually via the admin interface.
       if (newUids.length === 0 && filteredUids.length > 0) {
         const allStatuses = await this.prisma.emailMessage.findMany({
           where: {
             gmailMessageId: {
-              in: filteredUids.map((uid: number) => `imap-${uid}`),
+              in: currentAccountMessageIds,
             },
           },
           select: { gmailMessageId: true, processingStatus: true, to: true },
         });
-        const pendingOrError = allStatuses.filter(
+        const stuckEmails = allStatuses.filter(
           (msg) =>
             msg.processingStatus === 'pending' ||
             msg.processingStatus === 'error' ||
             msg.processingStatus === 'processing',
         );
-        if (pendingOrError.length > 0) {
+        if (stuckEmails.length > 0) {
           this.logger.warn(
-            `Found ${pendingOrError.length} messages with non-'done' status that should be retried:`,
+            `Found ${stuckEmails.length} emails with non-'done' status. These will be skipped to prevent loops.`,
           );
-          pendingOrError.forEach((msg) => {
+          stuckEmails.forEach((msg) => {
             this.logger.warn(
               `  - ${msg.gmailMessageId}: status=${msg.processingStatus}, to=${JSON.stringify(msg.to)}`,
             );
           });
-          // Return these UIDs so they can be retried
-          const retryUids = pendingOrError
-            .map((msg) => {
-              // Match both old format (imap-{uid}) and new format (imap-{hash}-{uid})
-              const uidMatch = msg.gmailMessageId.match(/^imap-([a-f0-9]{8}-)?(\d+)$/);
-              return uidMatch ? parseInt(uidMatch[2] || uidMatch[1], 10) : null;
-            })
-            .filter((uid): uid is number => uid !== null);
-          if (retryUids.length > 0) {
-            this.logger.log(
-              `Returning ${retryUids.length} UIDs for retry: ${retryUids.join(', ')}`,
-            );
-            return retryUids;
-          }
+          // DO NOT retry these - they're stuck. Mark them as done manually if needed.
         }
       }
 
