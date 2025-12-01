@@ -1252,11 +1252,9 @@ export class EmailListenerService {
               );
             }
 
-            // Build References header - use the FIRST message in the chain (the original)
-            // This ensures we always reply to the original, not to a previous reply
-            const refs: string[] = [];
-
-            // If there are existing References, use the FIRST one (the original message)
+            // CRITICAL: For References header, we ONLY want the original submission's Message-ID
+            // Do NOT build a chain - we always reply directly to the original, never to previous replies
+            // If there are existing References, use the FIRST one (the original message in the thread)
             if (reParsed.references) {
               const refsArray = Array.isArray(reParsed.references)
                 ? reParsed.references
@@ -1265,56 +1263,56 @@ export class EmailListenerService {
               if (refsArray.length > 0) {
                 const firstRef = refsArray[0].trim();
                 if (firstRef) {
-                  refs.push(firstRef);
                   // Use the first reference as the original Message-ID for In-Reply-To
                   if (!originalMessageId) {
                     originalMessageId = firstRef.startsWith('<')
                       ? firstRef
                       : `<${firstRef}>`;
                   }
+                  // References should ONLY contain the original message's Message-ID
+                  originalReferences = firstRef.startsWith('<')
+                    ? firstRef
+                    : `<${firstRef}>`;
+                  this.logger.log(
+                    `Using first Reference as original Message-ID: ${originalReferences}`,
+                  );
                 }
               }
             }
 
-            // If no References, use In-Reply-To if present
+            // If no References, use In-Reply-To if present (this is the original message)
             if (!originalMessageId && reParsed.inReplyTo) {
               const inReplyTo = reParsed.inReplyTo.trim();
               originalMessageId = inReplyTo.startsWith('<')
                 ? inReplyTo
                 : `<${inReplyTo}>`;
-              if (originalMessageId) {
-                refs.push(originalMessageId);
+              // References should match In-Reply-To (the original message)
+              if (!originalReferences) {
+                originalReferences = originalMessageId;
               }
             }
 
-            // If still no original, use the Message-ID itself
+            // If still no original, use the Message-ID itself (this IS the original submission)
             if (!originalMessageId && reParsed.messageId) {
               const msgId = reParsed.messageId.trim();
               if (msgId) {
                 originalMessageId = msgId.startsWith('<') ? msgId : `<${msgId}>`;
-                if (originalMessageId) {
-                  refs.push(originalMessageId);
+                // References should match the Message-ID (this is the original)
+                if (!originalReferences) {
+                  originalReferences = originalMessageId;
                 }
               }
             }
 
-            // Build References: original message + current message
-            if (refs.length > 0) {
-              // Add the current message's Message-ID to the References chain
-              if (reParsed.messageId) {
-                const currentMsgId = reParsed.messageId.trim();
-                const formattedCurrent = currentMsgId.startsWith('<')
-                  ? currentMsgId
-                  : `<${currentMsgId}>`;
-                if (!refs.includes(formattedCurrent)) {
-                  refs.push(formattedCurrent);
-                }
-              }
-              originalReferences = refs.join(' ');
-              this.logger.log(`Built References header: ${originalReferences}`);
-            } else if (originalMessageId) {
+            // CRITICAL: References should ONLY contain the original message's Message-ID
+            // Do NOT add the current message's Message-ID or build a chain
+            // This ensures every reply threads directly to the original submission
+            if (originalMessageId && !originalReferences) {
               originalReferences = originalMessageId;
             }
+            this.logger.log(
+              `Final References header (original only): ${originalReferences}`,
+            );
           } catch (mimeError) {
             this.logger.warn(
               'Could not read/parse raw MIME file to extract Message-ID:',
@@ -1324,6 +1322,7 @@ export class EmailListenerService {
         }
 
         // Final fallback: construct a Message-ID format (not ideal for threading)
+        // This should rarely happen if originalMessageId was stored correctly
         if (!originalMessageId) {
           if (
             emailData.gmailMessageId &&
@@ -1338,8 +1337,11 @@ export class EmailListenerService {
             originalMessageId = `<${emailData.gmailMessageId}@auxo.local>`;
           }
           if (originalMessageId) {
+            // References should match In-Reply-To (the original message only)
             originalReferences = originalMessageId;
-            this.logger.warn(`Using fallback Message-ID: ${originalMessageId}`);
+            this.logger.warn(
+              `Using fallback Message-ID (originalMessageId not stored): ${originalMessageId}`,
+            );
           }
         }
 
