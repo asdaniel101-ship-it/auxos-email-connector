@@ -70,4 +70,3 @@ export class HealthController {
     return { status: 'alive', timestamp: new Date().toISOString() };
   }
 }
-

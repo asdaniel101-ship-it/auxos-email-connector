@@ -10,7 +10,9 @@ export class PrismaService
     super({
       datasources: {
         db: {
-          url: process.env.DATABASE_URL || 'postgresql://dev:dev@localhost:5432/app',
+          url:
+            process.env.DATABASE_URL ||
+            'postgresql://dev:dev@localhost:5432/app',
         },
       },
     });

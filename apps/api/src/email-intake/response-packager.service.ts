@@ -24,7 +24,10 @@ export class ResponsePackagerService {
   /**
    * Package extraction result into response format
    */
-  async package(extractionResult: any, qaFlags: any): Promise<{
+  async package(
+    extractionResult: any,
+    qaFlags: any,
+  ): Promise<{
     summary: string;
     table: string;
     pdf: Buffer;
@@ -61,7 +64,8 @@ export class ResponsePackagerService {
         messages: [
           {
             role: 'system',
-            content: 'You are a professional insurance underwriter assistant. Write concise, clear summaries of commercial property submissions.',
+            content:
+              'You are a professional insurance underwriter assistant. Write concise, clear summaries of commercial property submissions.',
           },
           {
             role: 'user',
@@ -73,14 +77,21 @@ Data: ${JSON.stringify(data, null, 2)}`,
         temperature: 0.3,
       });
 
-      return response.choices[0].message.content || this.generateSummaryFallback(data);
+      return (
+        response.choices[0].message.content ||
+        this.generateSummaryFallback(data)
+      );
     } catch (error: any) {
       // Handle OpenAI API errors gracefully - use fallback
-      if (error?.status === 429 || error?.message?.includes('quota') || error?.message?.includes('429')) {
+      if (
+        error?.status === 429 ||
+        error?.message?.includes('quota') ||
+        error?.message?.includes('429')
+      ) {
         this.logger.warn('OpenAI API quota exceeded, using fallback summary');
         return this.generateSummaryFallback(data);
       }
-      
+
       this.logger.error('Error generating summary:', error);
       return this.generateSummaryFallback(data);
     }
@@ -92,10 +103,21 @@ Data: ${JSON.stringify(data, null, 2)}`,
   private generateSummaryFallback(data: any): string {
     const namedInsured = data.namedInsured || 'Unknown';
     const locations = data.locations?.length || 0;
-    const buildings = data.locations?.reduce((sum: number, loc: any) => sum + (loc.buildings?.length || 0), 0) || 0;
-    const totalLimit = data.locations?.reduce((sum: number, loc: any) => {
-      return sum + (loc.buildings?.reduce((bSum: number, b: any) => bSum + (b.buildingLimit || 0), 0) || 0);
-    }, 0) || 0;
+    const buildings =
+      data.locations?.reduce(
+        (sum: number, loc: any) => sum + (loc.buildings?.length || 0),
+        0,
+      ) || 0;
+    const totalLimit =
+      data.locations?.reduce((sum: number, loc: any) => {
+        return (
+          sum +
+          (loc.buildings?.reduce(
+            (bSum: number, b: any) => bSum + (b.buildingLimit || 0),
+            0,
+          ) || 0)
+        );
+      }, 0) || 0;
 
     return `Commercial property submission for ${namedInsured}. ${locations} location(s) with ${buildings} building(s). Total building limit: $${totalLimit.toLocaleString()}.`;
   }
@@ -170,7 +192,11 @@ Data: ${JSON.stringify(data, null, 2)}`,
   /**
    * Generate PDF using pdfkit
    */
-  private async generatePDF(data: any, summary: string, table: string): Promise<Buffer> {
+  private async generatePDF(
+    data: any,
+    summary: string,
+    table: string,
+  ): Promise<Buffer> {
     try {
       // Dynamically import pdfkit to avoid CommonJS/ESM issues
       const pdfkitModule = await import('pdfkit');
@@ -182,7 +208,9 @@ Data: ${JSON.stringify(data, null, 2)}`,
       doc.on('end', () => {});
 
       // Header
-      doc.fontSize(20).text('Commercial Property Submission', { align: 'center' });
+      doc
+        .fontSize(20)
+        .text('Commercial Property Submission', { align: 'center' });
       doc.moveDown();
 
       // Summary
@@ -193,7 +221,7 @@ Data: ${JSON.stringify(data, null, 2)}`,
       // Table content
       doc.fontSize(14).text('Submission Details', { underline: true });
       doc.fontSize(10);
-      
+
       // Split table into lines and add to PDF
       const lines = table.split('\n');
       for (const line of lines) {
@@ -220,4 +248,3 @@ Data: ${JSON.stringify(data, null, 2)}`,
     }
   }
 }
-

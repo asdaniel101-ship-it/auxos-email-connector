@@ -1,5 +1,11 @@
 import { FieldValueType } from '@prisma/client';
-import { IsArray, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsArray,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class UpdateFieldDefinitionDto {
   @IsString()
@@ -47,4 +53,3 @@ export class UpdateFieldDefinitionDto {
   @IsString({ each: true })
   alternateFieldNames?: string[];
 }
-

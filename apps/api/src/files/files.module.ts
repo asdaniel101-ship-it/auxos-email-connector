@@ -8,4 +8,3 @@ import { MinioService } from './minio.service';
   exports: [MinioService], // Export so other modules can use it
 })
 export class FilesModule {}
-

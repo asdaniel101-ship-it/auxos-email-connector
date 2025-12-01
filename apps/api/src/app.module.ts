@@ -35,9 +35,7 @@ import { validateEnv } from './config/env.validation';
     EmailIntakeModule,
     HealthModule,
   ],
-  controllers: [
-    AppController,
-  ],
+  controllers: [AppController],
   providers: [
     AppService,
     {

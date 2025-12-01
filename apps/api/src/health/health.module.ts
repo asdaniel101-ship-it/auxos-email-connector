@@ -7,4 +7,3 @@ import { PrismaModule } from '../prisma.module';
   controllers: [HealthController],
 })
 export class HealthModule {}
-

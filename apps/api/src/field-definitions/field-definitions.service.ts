@@ -8,10 +8,7 @@ export class FieldDefinitionsService {
 
   findAll() {
     return this.prisma.fieldDefinition.findMany({
-      orderBy: [
-        { category: 'asc' },
-        { fieldName: 'asc' },
-      ],
+      orderBy: [{ category: 'asc' }, { fieldName: 'asc' }],
     });
   }
 
@@ -56,4 +53,3 @@ export class FieldDefinitionsService {
     return this.findAll();
   }
 }
-

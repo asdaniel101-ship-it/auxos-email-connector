@@ -7,8 +7,18 @@ export class DocumentClassifierService {
   /**
    * Classify all attachments by document type
    */
-  async classifyAll(attachments: any[]): Promise<Map<string, 'acord' | 'sov' | 'loss_run' | 'schedule' | 'supplemental' | 'other'>> {
-    const classifications = new Map<string, 'acord' | 'sov' | 'loss_run' | 'schedule' | 'supplemental' | 'other'>();
+  async classifyAll(
+    attachments: any[],
+  ): Promise<
+    Map<
+      string,
+      'acord' | 'sov' | 'loss_run' | 'schedule' | 'supplemental' | 'other'
+    >
+  > {
+    const classifications = new Map<
+      string,
+      'acord' | 'sov' | 'loss_run' | 'schedule' | 'supplemental' | 'other'
+    >();
 
     for (const attachment of attachments) {
       const docType = await this.classify(attachment);
@@ -21,12 +31,20 @@ export class DocumentClassifierService {
   /**
    * Classify a single document
    */
-  async classify(attachment: any): Promise<'acord' | 'sov' | 'loss_run' | 'schedule' | 'supplemental' | 'other'> {
+  async classify(
+    attachment: any,
+  ): Promise<
+    'acord' | 'sov' | 'loss_run' | 'schedule' | 'supplemental' | 'other'
+  > {
     const filename = attachment.filename.toLowerCase();
     const contentType = attachment.contentType?.toLowerCase() || '';
 
     // ACORD detection
-    if (filename.includes('acord') || filename.includes('acord 140') || filename.includes('acord140')) {
+    if (
+      filename.includes('acord') ||
+      filename.includes('acord 140') ||
+      filename.includes('acord140')
+    ) {
       return 'acord';
     }
 
@@ -69,4 +87,3 @@ export class DocumentClassifierService {
     return 'other';
   }
 }
-

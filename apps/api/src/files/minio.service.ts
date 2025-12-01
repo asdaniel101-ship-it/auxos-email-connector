@@ -20,7 +20,7 @@ export class MinioService implements OnModuleInit {
     // Ensure the 'documents' bucket exists
     const bucketName = 'documents';
     const exists = await this.client.bucketExists(bucketName);
-    
+
     if (!exists) {
       console.log(`📦 Creating MinIO bucket: ${bucketName}`);
       await this.client.makeBucket(bucketName, 'us-east-1');
@@ -40,7 +40,7 @@ export class MinioService implements OnModuleInit {
     expirySeconds = 3600,
   ): Promise<{ url: string; fileKey: string }> {
     const bucketName = 'documents';
-    
+
     // Generate a unique file key with timestamp to avoid collisions
     const timestamp = Date.now();
     const fileKey = `uploads/${timestamp}-${fileName}`;
@@ -81,4 +81,3 @@ export class MinioService implements OnModuleInit {
     return this.client;
   }
 }
-

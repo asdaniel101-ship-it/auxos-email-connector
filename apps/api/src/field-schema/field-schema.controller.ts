@@ -1,4 +1,11 @@
-import { Controller, Get, Put, Body, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Put,
+  Body,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { FieldSchemaService } from './field-schema.service';
 
@@ -23,7 +30,11 @@ export class FieldSchemaController {
 
   @Get('expected')
   @ApiOperation({ summary: 'Get the expected schema format for rendering' })
-  @ApiResponse({ status: 200, description: 'Returns the expected schema format used by frontend and email reply' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Returns the expected schema format used by frontend and email reply',
+  })
   async getExpectedSchema() {
     try {
       return await this.fieldSchemaService.getExpectedSchema();
@@ -50,4 +61,3 @@ export class FieldSchemaController {
     }
   }
 }
-

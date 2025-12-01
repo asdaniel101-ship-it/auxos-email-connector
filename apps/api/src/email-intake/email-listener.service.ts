@@ -911,19 +911,23 @@ export class EmailListenerService {
       );
       if (alreadyProcessedUids.length > 0) {
         this.logger.log(
-          `Marking ${alreadyProcessedUids.length} already-processed messages as read in Gmail...`,
+          `Marking ${alreadyProcessedUids.length} already-processed messages as read in Gmail (silent operation)...`,
         );
+        // Mark as read silently without logging each one
         for (const uid of alreadyProcessedUids) {
           try {
             await connection.addFlags(uid, ['\\Seen']);
-            this.logger.log(`Marked message UID ${uid} as read`);
           } catch (flagError) {
+            // Only log errors, not successful operations
             this.logger.warn(
               `Could not mark already-processed email ${uid} as read:`,
               flagError,
             );
           }
         }
+        this.logger.log(
+          `Successfully marked ${alreadyProcessedUids.length} already-processed messages as read`,
+        );
       }
 
       // Log detailed info about why messages were skipped

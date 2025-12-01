@@ -16,7 +16,13 @@ import { FilesModule } from '../files/files.module';
 import { FieldSchemaModule } from '../field-schema/field-schema.module';
 
 @Module({
-  imports: [ScheduleModule.forRoot(), PrismaModule, EmailModule, FilesModule, FieldSchemaModule],
+  imports: [
+    ScheduleModule.forRoot(),
+    PrismaModule,
+    EmailModule,
+    FilesModule,
+    FieldSchemaModule,
+  ],
   providers: [
     EmailIntakeService,
     EmailListenerService,
@@ -32,4 +38,3 @@ import { FieldSchemaModule } from '../field-schema/field-schema.module';
   exports: [EmailIntakeService, FieldExtractionService],
 })
 export class EmailIntakeModule {}
-

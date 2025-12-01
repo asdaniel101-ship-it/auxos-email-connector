@@ -51,7 +51,8 @@ export class FilesController {
     // Sanitize filename (remove potentially dangerous characters)
     const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
 
-    const { url, fileKey } = await this.minioService.getPresignedPutUrl(sanitizedFileName);
+    const { url, fileKey } =
+      await this.minioService.getPresignedPutUrl(sanitizedFileName);
 
     return {
       url,
@@ -105,4 +106,3 @@ export class FilesController {
     };
   }
 }
-

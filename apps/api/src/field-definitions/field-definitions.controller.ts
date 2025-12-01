@@ -26,4 +26,3 @@ export class FieldDefinitionsController {
     return result;
   }
 }
-

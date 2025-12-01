@@ -1,4 +1,10 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, SetMetadata } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  UnauthorizedException,
+  SetMetadata,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
@@ -11,7 +17,9 @@ export class ApiKeyGuard implements CanActivate {
     private reflector: Reflector,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
+  canActivate(
+    context: ExecutionContext,
+  ): boolean | Promise<boolean> | Observable<boolean> {
     // Check if route is marked as public
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
@@ -23,7 +31,9 @@ export class ApiKeyGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
-    const apiKey = request.headers['x-api-key'] || request.headers['authorization']?.replace('Bearer ', '');
+    const apiKey =
+      request.headers['x-api-key'] ||
+      request.headers['authorization']?.replace('Bearer ', '');
 
     const validApiKey = this.configService.get<string>('API_KEY');
 
@@ -39,4 +49,3 @@ export class ApiKeyGuard implements CanActivate {
     return true;
   }
 }
-

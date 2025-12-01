@@ -1,6 +1,22 @@
-import { Controller, Get, Post, Param, Query, UseInterceptors, UploadedFile, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Query,
+  UseInterceptors,
+  UploadedFile,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiConsumes,
+  ApiBody,
+} from '@nestjs/swagger';
 import { EmailIntakeService } from './email-intake.service';
 import { EmailListenerService } from './email-listener.service';
 import { FieldExtractionService } from './field-extraction.service';
@@ -27,7 +43,9 @@ export class EmailIntakeController {
   }
 
   @Post('process/:gmailMessageId')
-  @ApiOperation({ summary: 'Manually process a specific email by Gmail message ID' })
+  @ApiOperation({
+    summary: 'Manually process a specific email by Gmail message ID',
+  })
   @ApiResponse({ status: 200, description: 'Email processed' })
   async processEmail(@Param('gmailMessageId') gmailMessageId: string) {
     return this.emailIntakeService.processEmail(gmailMessageId);
@@ -56,19 +74,31 @@ export class EmailIntakeController {
       }
 
       if (!file.originalname || !file.originalname.endsWith('.eml')) {
-        throw new HttpException('File must be a .eml file', HttpStatus.BAD_REQUEST);
+        throw new HttpException(
+          'File must be a .eml file',
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
       // Parse and store the .eml file
       const emailData = await this.emailListener.parseAndStoreEml(file.buffer);
 
       if (!emailData || !emailData.gmailMessageId) {
-        throw new HttpException('Failed to parse email file', HttpStatus.INTERNAL_SERVER_ERROR);
+        throw new HttpException(
+          'Failed to parse email file',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
 
       // Check if email was already processed
-      const existingResult = await this.emailIntakeService.getSubmissionById(emailData.id);
-      if (existingResult && existingResult.processingStatus === 'done' && existingResult.extractionResult) {
+      const existingResult = await this.emailIntakeService.getSubmissionById(
+        emailData.id,
+      );
+      if (
+        existingResult &&
+        existingResult.processingStatus === 'done' &&
+        existingResult.extractionResult
+      ) {
         return {
           success: true,
           message: 'Email was already processed previously',
@@ -95,10 +125,10 @@ export class EmailIntakeController {
       if (error instanceof HttpException) {
         throw error;
       }
-      
+
       // Log the error for debugging
       console.error('Error uploading .eml file:', error);
-      
+
       throw new HttpException(
         error instanceof Error ? error.message : 'Failed to process .eml file',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -108,7 +138,9 @@ export class EmailIntakeController {
 
   @Get('submissions')
   @Public()
-  @ApiOperation({ summary: 'Get all processed submissions (for admin dashboard)' })
+  @ApiOperation({
+    summary: 'Get all processed submissions (for admin dashboard)',
+  })
   @ApiResponse({ status: 200, description: 'List of submissions' })
   async getAllSubmissions(
     @Query('limit') limit?: string,
@@ -129,7 +161,9 @@ export class EmailIntakeController {
   }
 
   @Get('emails')
-  @ApiOperation({ summary: 'Get all emails (including non-submissions) for debugging' })
+  @ApiOperation({
+    summary: 'Get all emails (including non-submissions) for debugging',
+  })
   @ApiResponse({ status: 200, description: 'List of all emails' })
   async getAllEmails(
     @Query('limit') limit?: string,
@@ -149,7 +183,9 @@ export class EmailIntakeController {
   }
 
   @Get('imap/check')
-  @ApiOperation({ summary: 'Check IMAP connection and list recent emails in inbox' })
+  @ApiOperation({
+    summary: 'Check IMAP connection and list recent emails in inbox',
+  })
   @ApiResponse({ status: 200, description: 'IMAP inbox status' })
   async checkImap() {
     return this.emailListener.checkImapConnection();
@@ -164,9 +200,12 @@ export class EmailIntakeController {
       const emailData = await this.prisma.emailMessage.findUnique({
         where: { id },
       });
-      
+
       if (!emailData) {
-        throw new HttpException(`Email with ID ${id} not found`, HttpStatus.NOT_FOUND);
+        throw new HttpException(
+          `Email with ID ${id} not found`,
+          HttpStatus.NOT_FOUND,
+        );
       }
 
       let emailBody = '';
@@ -175,21 +214,26 @@ export class EmailIntakeController {
       if (emailData.rawMimeStorageKey) {
         try {
           const minioClient = this.minioService.getClient();
-          const dataStream = await minioClient.getObject('documents', emailData.rawMimeStorageKey);
-          
+          const dataStream = await minioClient.getObject(
+            'documents',
+            emailData.rawMimeStorageKey,
+          );
+
           // Read the raw MIME file
           const chunks: Buffer[] = [];
           for await (const chunk of dataStream) {
             chunks.push(chunk);
           }
           const rawMime = Buffer.concat(chunks);
-          
+
           // Parse it to get the body
           const { simpleParser } = await import('mailparser');
           const parsed = await simpleParser(rawMime);
           emailBody = parsed.text || parsed.html || '';
         } catch (mimeError) {
-          console.warn(`Could not read raw MIME file for email body: ${mimeError}`);
+          console.warn(
+            `Could not read raw MIME file for email body: ${mimeError}`,
+          );
         }
       }
 
@@ -198,7 +242,7 @@ export class EmailIntakeController {
       if (error instanceof HttpException) {
         throw error;
       }
-      
+
       console.error('Error getting email body:', error);
       throw new HttpException(
         error instanceof Error ? error.message : 'Failed to get email body',
@@ -208,7 +252,10 @@ export class EmailIntakeController {
   }
 
   @Post('reprocess/:emailMessageId')
-  @ApiOperation({ summary: 'Reprocess an existing email by its database ID (useful for fixing failed emails)' })
+  @ApiOperation({
+    summary:
+      'Reprocess an existing email by its database ID (useful for fixing failed emails)',
+  })
   @ApiResponse({ status: 200, description: 'Email reprocessed' })
   async reprocessEmail(@Param('emailMessageId') emailMessageId: string) {
     try {
@@ -217,9 +264,12 @@ export class EmailIntakeController {
         where: { id: emailMessageId },
         include: { attachments: true },
       });
-      
+
       if (!emailData) {
-        throw new HttpException(`Email with ID ${emailMessageId} not found`, HttpStatus.NOT_FOUND);
+        throw new HttpException(
+          `Email with ID ${emailMessageId} not found`,
+          HttpStatus.NOT_FOUND,
+        );
       }
 
       const gmailMessageId = emailData.gmailMessageId;
@@ -229,21 +279,26 @@ export class EmailIntakeController {
       if (emailData.rawMimeStorageKey) {
         try {
           const minioClient = this.minioService.getClient();
-          const dataStream = await minioClient.getObject('documents', emailData.rawMimeStorageKey);
-          
+          const dataStream = await minioClient.getObject(
+            'documents',
+            emailData.rawMimeStorageKey,
+          );
+
           // Read the raw MIME file
           const chunks: Buffer[] = [];
           for await (const chunk of dataStream) {
             chunks.push(chunk);
           }
           const rawMime = Buffer.concat(chunks);
-          
+
           // Parse it to get the body
           const { simpleParser } = await import('mailparser');
           const parsed = await simpleParser(rawMime);
           emailBody = parsed.text || parsed.html || '';
         } catch (mimeError) {
-          console.warn(`Could not read raw MIME file for email body: ${mimeError}`);
+          console.warn(
+            `Could not read raw MIME file for email body: ${mimeError}`,
+          );
           // Fall back to empty body - classification should still work with subject and attachments
         }
       }
@@ -253,14 +308,19 @@ export class EmailIntakeController {
         try {
           const uidStr = gmailMessageId.replace('imap-', '');
           const imapUid = parseInt(uidStr, 10);
-          
+
           if (!isNaN(imapUid)) {
-            console.log(`Attempting to re-fetch email body from IMAP UID ${imapUid} (this may timeout)`);
-            const freshEmailData = await this.emailListener.fetchAndStoreEmail(imapUid);
+            console.log(
+              `Attempting to re-fetch email body from IMAP UID ${imapUid} (this may timeout)`,
+            );
+            const freshEmailData =
+              await this.emailListener.fetchAndStoreEmail(imapUid);
             emailBody = freshEmailData.body || '';
           }
         } catch (imapError) {
-          console.warn(`Could not re-fetch from IMAP (this is OK, using existing data): ${imapError}`);
+          console.warn(
+            `Could not re-fetch from IMAP (this is OK, using existing data): ${imapError}`,
+          );
           // Continue with existing data - classification should work with subject and attachments
         }
       }
@@ -268,14 +328,16 @@ export class EmailIntakeController {
       // Reset processing status to allow reprocessing
       await this.prisma.emailMessage.update({
         where: { id: emailMessageId },
-        data: { 
+        data: {
           processingStatus: 'pending',
           errorMessage: null,
         },
       });
 
       // Now process it with the existing data (body may be empty, but subject and attachments should be enough)
-      console.log(`Reprocessing email ${emailMessageId} with existing data (body length: ${emailBody.length})`);
+      console.log(
+        `Reprocessing email ${emailMessageId} with existing data (body length: ${emailBody.length})`,
+      );
       const result = await this.emailIntakeService.processEmail(
         gmailMessageId,
         emailBody,
@@ -291,7 +353,7 @@ export class EmailIntakeController {
       if (error instanceof HttpException) {
         throw error;
       }
-      
+
       console.error('Error reprocessing email:', error);
       throw new HttpException(
         error instanceof Error ? error.message : 'Failed to reprocess email',
@@ -301,11 +363,16 @@ export class EmailIntakeController {
   }
 
   @Get('debug/enhanced-schema')
-  @ApiOperation({ summary: 'Debug: Get the enhanced schema with field definitions that will be sent to LLM' })
-  @ApiResponse({ status: 200, description: 'Enhanced schema with field definitions' })
+  @ApiOperation({
+    summary:
+      'Debug: Get the enhanced schema with field definitions that will be sent to LLM',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Enhanced schema with field definitions',
+  })
   async getEnhancedSchema() {
     // Access the private method via a public method we'll add to FieldExtractionService
     return this.fieldExtractionService.getEnhancedSchemaForDebug();
   }
 }
-

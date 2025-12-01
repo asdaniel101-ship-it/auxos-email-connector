@@ -15,7 +15,7 @@ export class FieldSchemaService {
     const cwd = process.cwd();
     const relativeToCwd = path.join(cwd, 'field-schema.json');
     const relativeToDirname = path.join(__dirname, '../../field-schema.json');
-    
+
     // Check which path exists
     if (fs.existsSync(relativeToCwd)) {
       this.schemaPath = relativeToCwd;
@@ -26,7 +26,7 @@ export class FieldSchemaService {
       this.schemaPath = relativeToCwd;
       this.logger.warn(`Field schema not found, will use: ${this.schemaPath}`);
     }
-    
+
     this.logger.log(`Field schema path: ${this.schemaPath}`);
   }
 
@@ -131,7 +131,9 @@ export class FieldSchemaService {
   /**
    * Update the field schema
    */
-  async updateSchema(schema: any): Promise<{ success: boolean; message: string }> {
+  async updateSchema(
+    schema: any,
+  ): Promise<{ success: boolean; message: string }> {
     try {
       // Validate it's valid JSON structure
       if (typeof schema !== 'object' || schema === null) {
@@ -161,4 +163,3 @@ export class FieldSchemaService {
     }
   }
 }
-

@@ -11,4 +11,3 @@ import { EmailIntakeModule } from '../email-intake/email-intake.module';
   exports: [FieldDefinitionsService],
 })
 export class FieldDefinitionsModule {}
-

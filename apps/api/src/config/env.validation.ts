@@ -1,5 +1,12 @@
 import { plainToInstance } from 'class-transformer';
-import { IsNotEmpty, IsString, IsOptional, IsNumber, IsUrl, validateSync } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsUrl,
+  validateSync,
+} from 'class-validator';
 
 class EnvironmentVariables {
   @IsOptional()
@@ -61,4 +68,3 @@ export function validateEnv(config: Record<string, unknown>) {
 
   return validatedConfig;
 }
-
