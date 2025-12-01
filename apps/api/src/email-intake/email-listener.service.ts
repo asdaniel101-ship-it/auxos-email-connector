@@ -864,13 +864,18 @@ export class EmailListenerService {
         (uid: number) => `imap-${emailHash}-${uid}`,
       );
 
-      // Check for ANY existing emails with these UIDs, regardless of status
+      // Also check for old format (imap-{uid}) in case emails were stored before the hash was added
+      const oldFormatMessageIds = filteredUids.map(
+        (uid: number) => `imap-${uid}`,
+      );
+
+      // Check for ANY existing emails with these UIDs, regardless of status or format
       // If an email exists in the database (even with pending/error status), don't process it again
       // This prevents reprocessing emails that are stuck or failed
       const existing = await this.prisma.emailMessage.findMany({
         where: {
           gmailMessageId: {
-            in: currentAccountMessageIds,
+            in: [...currentAccountMessageIds, ...oldFormatMessageIds],
           },
           // Check ALL statuses - if it exists in DB, don't process again
         },
@@ -878,16 +883,21 @@ export class EmailListenerService {
       });
 
       const existingIds = new Set(existing.map((e) => e.gmailMessageId));
-      const newUids = filteredUids.filter(
-        (uid: number) => !existingIds.has(`imap-${emailHash}-${uid}`),
-      );
+      // Check both new format (imap-{hash}-{uid}) and old format (imap-{uid})
+      const newUids = filteredUids.filter((uid: number) => {
+        const newFormat = `imap-${emailHash}-${uid}`;
+        const oldFormat = `imap-${uid}`;
+        return !existingIds.has(newFormat) && !existingIds.has(oldFormat);
+      });
 
       // Removed detailed filtering logs - only return count
 
       // Mark already-processed messages as read in Gmail to keep it in sync (silent operation)
-      const alreadyProcessedUids = filteredUids.filter((uid: number) =>
-        existingIds.has(`imap-${emailHash}-${uid}`),
-      );
+      const alreadyProcessedUids = filteredUids.filter((uid: number) => {
+        const newFormat = `imap-${emailHash}-${uid}`;
+        const oldFormat = `imap-${uid}`;
+        return existingIds.has(newFormat) || existingIds.has(oldFormat);
+      });
       if (alreadyProcessedUids.length > 0) {
         // Mark as read silently without logging
         for (const uid of alreadyProcessedUids) {
