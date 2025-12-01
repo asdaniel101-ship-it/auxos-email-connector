@@ -879,11 +879,14 @@ export class EmailListenerService {
       }
 
       // Check which ones we haven't processed yet
+      // Only skip messages that are already successfully processed (status = 'done')
+      // Retry messages that are pending, error, or processing
       const existing = await this.prisma.emailMessage.findMany({
         where: {
           gmailMessageId: {
             in: filteredUids.map((uid: number) => `imap-${uid}`),
           },
+          processingStatus: 'done', // Only skip if already successfully processed
         },
         select: { gmailMessageId: true },
       });
