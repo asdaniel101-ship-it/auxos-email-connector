@@ -880,15 +880,22 @@ export class EmailListenerService {
 
       // Check which ones we haven't processed yet
       // Only skip messages that are already successfully processed (status = 'done')
-      // Retry messages that are pending, error, or processing
+      // IMPORTANT: Also verify the 'to' field contains current email to avoid matching
+      // messages from old email addresses after an email address change
+      this.logger.log(
+        `Checking database for already-processed messages (looking for emails to: ${this.email})...`,
+      );
       const existing = await this.prisma.emailMessage.findMany({
         where: {
           gmailMessageId: {
             in: filteredUids.map((uid: number) => `imap-${uid}`),
           },
           processingStatus: 'done', // Only skip if already successfully processed
+          to: {
+            has: this.email.toLowerCase(), // Verify it was sent to the current email address (case-insensitive)
+          },
         },
-        select: { gmailMessageId: true, processingStatus: true },
+        select: { gmailMessageId: true, processingStatus: true, to: true },
       });
 
       const existingIds = new Set(existing.map((e) => e.gmailMessageId));
@@ -929,11 +936,11 @@ export class EmailListenerService {
               in: filteredUids.map((uid: number) => `imap-${uid}`),
             },
           },
-          select: { gmailMessageId: true, processingStatus: true },
+          select: { gmailMessageId: true, processingStatus: true, to: true },
         });
         allExisting.forEach((msg) => {
           this.logger.log(
-            `  - ${msg.gmailMessageId}: status=${msg.processingStatus}`,
+            `  - ${msg.gmailMessageId}: status=${msg.processingStatus}, to=${JSON.stringify(msg.to)}`,
           );
         });
       }
