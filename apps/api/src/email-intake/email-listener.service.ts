@@ -869,15 +869,19 @@ export class EmailListenerService {
         (uid: number) => `imap-${uid}`,
       );
 
-      // Check for ANY existing emails with these UIDs, regardless of status or format
-      // If an email exists in the database (even with pending/error status), don't process it again
-      // This prevents reprocessing emails that are stuck or failed
+      // CRITICAL: Only skip emails that are BOTH in database AND have status='done'
+      // If an email is UNREAD in Gmail, we should process it even if it exists in DB
+      // This handles:
+      // - New emails (not in DB) → process
+      // - Emails that failed before (status='error') → retry if unread
+      // - Emails stuck in 'processing' → retry if unread
+      // - Emails already successfully processed (status='done') → skip
       const existing = await this.prisma.emailMessage.findMany({
         where: {
           gmailMessageId: {
             in: [...currentAccountMessageIds, ...oldFormatMessageIds],
           },
-          // Check ALL statuses - if it exists in DB, don't process again
+          processingStatus: 'done', // Only skip if already successfully processed
         },
         select: { gmailMessageId: true, processingStatus: true, to: true },
       });
@@ -913,56 +917,7 @@ export class EmailListenerService {
         }
       }
 
-      // Log detailed info about why messages were skipped
-      if (filteredUids.length > 0 && newUids.length === 0) {
-        this.logger.log(
-          `All ${filteredUids.length} messages were already processed (status='done'). Checking all statuses for details...`,
-        );
-        const allExisting = await this.prisma.emailMessage.findMany({
-          where: {
-            gmailMessageId: {
-              in: currentAccountMessageIds,
-            },
-          },
-          select: { gmailMessageId: true, processingStatus: true, to: true },
-        });
-        allExisting.forEach((msg) => {
-          this.logger.log(
-            `  - ${msg.gmailMessageId}: status=${msg.processingStatus}, to=${JSON.stringify(msg.to)}`,
-          );
-        });
-      }
-
-      // CRITICAL: Do NOT retry emails with 'pending', 'error', or 'processing' status
-      // These emails may be stuck in a bad state. Instead, mark them as 'done' to prevent loops.
-      // If an email needs reprocessing, it should be done manually via the admin interface.
-      if (newUids.length === 0 && filteredUids.length > 0) {
-        const allStatuses = await this.prisma.emailMessage.findMany({
-          where: {
-            gmailMessageId: {
-              in: currentAccountMessageIds,
-            },
-          },
-          select: { gmailMessageId: true, processingStatus: true, to: true },
-        });
-        const stuckEmails = allStatuses.filter(
-          (msg) =>
-            msg.processingStatus === 'pending' ||
-            msg.processingStatus === 'error' ||
-            msg.processingStatus === 'processing',
-        );
-        if (stuckEmails.length > 0) {
-          this.logger.warn(
-            `Found ${stuckEmails.length} emails with non-'done' status. These will be skipped to prevent loops.`,
-          );
-          stuckEmails.forEach((msg) => {
-            this.logger.warn(
-              `  - ${msg.gmailMessageId}: status=${msg.processingStatus}, to=${JSON.stringify(msg.to)}`,
-            );
-          });
-          // DO NOT retry these - they're stuck. Mark them as done manually if needed.
-        }
-      }
+      // Removed verbose logging about skipped messages - keep logs clean
 
       await connection.end();
 
