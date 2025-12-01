@@ -1184,16 +1184,20 @@ export class EmailListenerService {
               originalMessageId = inReplyTo.startsWith('<')
                 ? inReplyTo
                 : `<${inReplyTo}>`;
-              refs.push(originalMessageId);
+              if (originalMessageId) {
+                refs.push(originalMessageId);
+              }
             }
 
             // If still no original, use the Message-ID itself
             if (!originalMessageId && reParsed.messageId) {
-              originalMessageId = reParsed.messageId.trim();
-              if (!originalMessageId.startsWith('<')) {
-                originalMessageId = `<${originalMessageId}>`;
+              const msgId = reParsed.messageId.trim();
+              if (msgId) {
+                originalMessageId = msgId.startsWith('<') ? msgId : `<${msgId}>`;
+                if (originalMessageId) {
+                  refs.push(originalMessageId);
+                }
               }
-              refs.push(originalMessageId);
             }
 
             // Build References: original message + current message
