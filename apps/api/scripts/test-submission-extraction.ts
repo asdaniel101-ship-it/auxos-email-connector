@@ -40,7 +40,7 @@ async function testSubmissionExtraction() {
     // Parse email text to extract headers and body
     const lines = emailText.split('\n');
     let from = 'test@example.com';
-    let to = 'auxosreachout@gmail.com';
+    let to = 'submit@auxos.dev';
     let subject = 'Test Submission';
     let body = emailText;
     

@@ -13,7 +13,7 @@ if (!process.env.EMAIL_PASSWORD) {
 async function testEmailConnector() {
   console.log('Testing Email Connector...\n');
   
-  const emailUser = process.env.EMAIL_USER || 'auxosreachout@gmail.com';
+  const emailUser = process.env.EMAIL_USER || 'submit@auxos.dev';
   const emailPassword = process.env.EMAIL_PASSWORD;
 
   if (!emailPassword) {

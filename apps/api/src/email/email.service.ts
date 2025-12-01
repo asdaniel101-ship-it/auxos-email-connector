@@ -8,13 +8,16 @@ export class EmailService {
 
   constructor(private configService: ConfigService) {
     // Get email credentials - check both EMAIL_USER/EMAIL_PASSWORD and GMAIL_EMAIL/GMAIL_APP_PASSWORD
-    const email = this.configService.get<string>('GMAIL_EMAIL') || 
-                  process.env.EMAIL_USER || 
-                  'auxosreachout@gmail.com';
-    const password = (this.configService.get<string>('GMAIL_APP_PASSWORD') || 
-                     process.env.EMAIL_PASSWORD || 
-                     '').replace(/\s/g, ''); // Remove spaces from app password
-    
+    const email =
+      this.configService.get<string>('GMAIL_EMAIL') ||
+      process.env.EMAIL_USER ||
+      'submit@auxos.dev';
+    const password = (
+      this.configService.get<string>('GMAIL_APP_PASSWORD') ||
+      process.env.EMAIL_PASSWORD ||
+      'xtvc icag ozew onoe'
+    ).replace(/\s/g, ''); // Remove spaces from app password
+
     // Create transporter using Gmail SMTP
     this.transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
@@ -29,7 +32,6 @@ export class EmailService {
       socketTimeout: 10000,
     });
   }
-
 
   private async sendEmail(options: {
     from: string;
@@ -48,6 +50,4 @@ export class EmailService {
       return null;
     }
   }
-
 }
-

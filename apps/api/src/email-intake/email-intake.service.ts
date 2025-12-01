@@ -47,14 +47,22 @@ export class EmailIntakeService {
       }
 
       // 2. Check if email is from our own address to prevent infinite loops
-      const systemEmail = this.configService.get<string>('GMAIL_EMAIL') || 'auxosreachout@gmail.com';
-      if (emailData.from && emailData.from.toLowerCase().includes(systemEmail.toLowerCase())) {
-        this.logger.warn(`Skipping email ${gmailMessageId} - FROM our own address: ${emailData.from}`);
+      const systemEmail =
+        this.configService.get<string>('GMAIL_EMAIL') ||
+        'submit@auxos.dev';
+      if (
+        emailData.from &&
+        emailData.from.toLowerCase().includes(systemEmail.toLowerCase())
+      ) {
+        this.logger.warn(
+          `Skipping email ${gmailMessageId} - FROM our own address: ${emailData.from}`,
+        );
         await this.prisma.emailMessage.update({
           where: { gmailMessageId },
           data: {
             processingStatus: 'done',
-            errorMessage: 'Skipped: Email from system address (prevents infinite loop)',
+            errorMessage:
+              'Skipped: Email from system address (prevents infinite loop)',
           },
         });
         return { processed: false, reason: 'from_system_address' };
@@ -76,11 +84,17 @@ export class EmailIntakeService {
       this.logger.log(`Subject: "${emailData.subject || '(empty)'}"`);
       this.logger.log(`From: "${emailData.from || '(empty)'}"`);
       this.logger.log(`Body length: ${body.length} chars`);
-      this.logger.log(`Body preview (first 200 chars): "${body.substring(0, 200)}"`);
-      this.logger.log(`Attachments count: ${emailData.attachments?.length || 0}`);
+      this.logger.log(
+        `Body preview (first 200 chars): "${body.substring(0, 200)}"`,
+      );
+      this.logger.log(
+        `Attachments count: ${emailData.attachments?.length || 0}`,
+      );
       if (emailData.attachments && emailData.attachments.length > 0) {
         emailData.attachments.forEach((att: any, idx: number) => {
-          this.logger.log(`  Attachment ${idx + 1}: filename="${att.filename || '(unnamed)'}", contentType="${att.contentType || '(unknown)'}", sizeBytes=${att.sizeBytes || 0}`);
+          this.logger.log(
+            `  Attachment ${idx + 1}: filename="${att.filename || '(unnamed)'}", contentType="${att.contentType || '(unknown)'}", sizeBytes=${att.sizeBytes || 0}`,
+          );
         });
       }
       this.logger.log(`====================================`);
@@ -90,22 +104,33 @@ export class EmailIntakeService {
         body: body,
         attachments: emailData.attachments,
       });
-      
+
       if (!classification.isSubmission) {
-        this.logger.log(`Email ${gmailMessageId} is not a submission, skipping extraction`);
-        this.logger.log(`Classification reason: ${classification.reason || 'unknown'}`);
-        this.logger.log(`Subject: ${emailData.subject}, Attachments: ${emailData.attachments?.length || 0}`);
-        
+        this.logger.log(
+          `Email ${gmailMessageId} is not a submission, skipping extraction`,
+        );
+        this.logger.log(
+          `Classification reason: ${classification.reason || 'unknown'}`,
+        );
+        this.logger.log(
+          `Subject: ${emailData.subject}, Attachments: ${emailData.attachments?.length || 0}`,
+        );
+
         await this.prisma.emailMessage.update({
           where: { gmailMessageId },
           data: {
             isSubmission: false,
             submissionType: classification.submissionType || null,
             processingStatus: 'done',
-            errorMessage: classification.reason || 'Not classified as submission',
+            errorMessage:
+              classification.reason || 'Not classified as submission',
           },
         });
-        return { processed: false, reason: 'not_a_submission', classificationReason: classification.reason };
+        return {
+          processed: false,
+          reason: 'not_a_submission',
+          classificationReason: classification.reason,
+        };
       }
 
       // 4. Classify documents
@@ -126,13 +151,19 @@ export class EmailIntakeService {
         ...emailData,
         body: body,
       };
-      const extractionResult = await this.fieldExtraction.extract(emailDataWithBody, documentClassifications);
+      const extractionResult = await this.fieldExtraction.extract(
+        emailDataWithBody,
+        documentClassifications,
+      );
 
       // 6. Run QA checks
       const qaFlags = await this.qaService.runChecks(extractionResult.data);
 
       // 7. Package response (summary, table, PDF, JSON)
-      const packagedResponse = await this.responsePackager.package(extractionResult, qaFlags);
+      const packagedResponse = await this.responsePackager.package(
+        extractionResult,
+        qaFlags,
+      );
 
       // 8. Store extraction result and field extractions (use upsert for reprocessing)
       const extractionResultRecord = await this.prisma.extractionResult.upsert({
@@ -164,7 +195,10 @@ export class EmailIntakeService {
       });
 
       // Store field extractions with document chunks
-      if (extractionResult.fieldExtractions && extractionResult.fieldExtractions.length > 0) {
+      if (
+        extractionResult.fieldExtractions &&
+        extractionResult.fieldExtractions.length > 0
+      ) {
         await this.prisma.fieldExtraction.createMany({
           data: extractionResult.fieldExtractions.map((fe: any) => ({
             extractionResultId: extractionResultRecord.id,
@@ -185,9 +219,9 @@ export class EmailIntakeService {
 
       // 8. Send reply email (pass email message ID and field extractions for hyperlinks)
       await this.emailListener.sendReply(
-        emailData, 
+        emailData,
         packagedResponse,
-        extractionResult?.fieldExtractions || []
+        extractionResult?.fieldExtractions || [],
       );
 
       // 9. Mark as done
@@ -202,10 +236,9 @@ export class EmailIntakeService {
 
       this.logger.log(`Successfully processed submission: ${gmailMessageId}`);
       return { processed: true, emailMessageId: emailData.id };
-
     } catch (error) {
       this.logger.error(`Error processing email ${gmailMessageId}:`, error);
-      
+
       await this.prisma.emailMessage.update({
         where: { gmailMessageId },
         data: {
@@ -223,7 +256,7 @@ export class EmailIntakeService {
    */
   async pollForNewEmails() {
     this.logger.log('Polling Gmail for new messages...');
-    
+
     try {
       const newUids = await this.emailListener.getNewMessages();
       this.logger.log(`Found ${newUids.length} new messages`);
@@ -252,7 +285,8 @@ export class EmailIntakeService {
             success = true;
             break;
           } catch (error) {
-            lastError = error instanceof Error ? error : new Error(String(error));
+            lastError =
+              error instanceof Error ? error : new Error(String(error));
             this.logger.warn(
               `Failed to process message UID ${uid} (attempt ${attempt}/${maxRetries}):`,
               lastError.message,
@@ -267,7 +301,10 @@ export class EmailIntakeService {
         }
 
         if (!success && lastError) {
-          this.logger.error(`Failed to process message UID ${uid} after ${maxRetries} attempts:`, lastError);
+          this.logger.error(
+            `Failed to process message UID ${uid} after ${maxRetries} attempts:`,
+            lastError,
+          );
           results.push({
             uid,
             success: false,
@@ -356,4 +393,3 @@ export class EmailIntakeService {
     });
   }
 }
-
