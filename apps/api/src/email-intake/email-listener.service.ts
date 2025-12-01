@@ -903,9 +903,7 @@ export class EmailListenerService {
       // Only skip messages that are already successfully processed (status = 'done')
       // IMPORTANT: gmailMessageId now includes email hash, so it's unique per account
       // This prevents conflicts when switching email accounts
-      this.logger.log(
-        `Checking database for already-processed messages (looking for emails to: ${this.email})...`,
-      );
+      // Check database for already-processed messages (silent check)
       
       // Generate gmailMessageIds with email hash for current account
       const emailHash = crypto
@@ -932,47 +930,25 @@ export class EmailListenerService {
         (uid: number) => !existingIds.has(`imap-${emailHash}-${uid}`),
       );
 
-      // Log detailed info about what was filtered and why
-      if (filteredUids.length > 0) {
-        this.logger.log(
-          `Filtering results: ${filteredUids.length} total UIDs, ${existing.length} found in DB (status='done' AND to contains '${this.email}'), ${newUids.length} are new`,
-        );
-        if (newUids.length > 0) {
-          this.logger.log(
-            `New UIDs to process: ${newUids.join(', ')}`,
-          );
-        }
-        if (existing.length > 0) {
-          this.logger.log(
-            `Already processed UIDs (skipped): ${existing.map((e) => e.gmailMessageId).join(', ')}`,
-          );
-        }
-      }
+      // Removed detailed filtering logs - only return count
 
-      // Mark already-processed messages as read in Gmail to keep it in sync
-      // (They were processed before but may still show as unread)
+      // Mark already-processed messages as read in Gmail to keep it in sync (silent operation)
       const alreadyProcessedUids = filteredUids.filter((uid: number) =>
         existingIds.has(`imap-${emailHash}-${uid}`),
       );
       if (alreadyProcessedUids.length > 0) {
-        this.logger.log(
-          `Marking ${alreadyProcessedUids.length} already-processed messages as read in Gmail (silent operation)...`,
-        );
-        // Mark as read silently without logging each one
+        // Mark as read silently without logging
         for (const uid of alreadyProcessedUids) {
           try {
             await connection.addFlags(uid, ['\\Seen']);
           } catch (flagError) {
-            // Only log errors, not successful operations
+            // Only log errors
             this.logger.warn(
               `Could not mark already-processed email ${uid} as read:`,
               flagError,
             );
           }
         }
-        this.logger.log(
-          `Successfully marked ${alreadyProcessedUids.length} already-processed messages as read`,
-        );
       }
 
       // Log detailed info about why messages were skipped
@@ -1028,9 +1004,7 @@ export class EmailListenerService {
 
       await connection.end();
 
-      this.logger.log(
-        `Found ${newUids.length} new unprocessed messages (out of ${filteredUids.length} filtered, ${uids.length} total)`,
-      );
+      // Only return the count - detailed logging removed for cleaner logs
       return newUids;
     } catch (error) {
       this.logger.error('Error fetching new messages:', error);

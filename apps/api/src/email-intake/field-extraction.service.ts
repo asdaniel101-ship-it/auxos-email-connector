@@ -259,9 +259,10 @@ export class FieldExtractionService implements OnModuleInit {
     try {
       // NEW APPROACH: Extract each field separately with its own LLM call
       // Each field gets: businessDescription, extractorLogic, whereToLook, and all documents
-      this.logger.log('Starting per-field extraction: One LLM call per field');
-
       const allSchemaFields = this.getAllSchemaFields();
+      this.logger.log(
+        `Starting field extraction: ${allSchemaFields.length} fields to process`,
+      );
       const extractedData: any = {
         submission: {},
         locations: [],
@@ -299,16 +300,13 @@ export class FieldExtractionService implements OnModuleInit {
         );
         const batch = allSchemaFields.slice(batchStart, batchEnd);
 
-        this.logger.log(
-          `Processing batch ${Math.floor(batchStart / BATCH_SIZE) + 1}/${Math.ceil(allSchemaFields.length / BATCH_SIZE)}: fields ${batchStart + 1}-${batchEnd}`,
-        );
+        const batchNum = Math.floor(batchStart / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(allSchemaFields.length / BATCH_SIZE);
 
         // Process batch in parallel
         const batchPromises = batch.map(async (schemaField, index) => {
-          const fieldIndex = batchStart + index;
-          this.logger.log(
-            `Extracting field ${fieldIndex + 1}/${allSchemaFields.length}: ${schemaField.path}`,
-          );
+          const fieldIndex = batchStart + index + 1;
+          const totalFields = allSchemaFields.length;
 
           try {
             const fieldResult = await this.extractSingleField(
@@ -318,16 +316,32 @@ export class FieldExtractionService implements OnModuleInit {
               parsedTexts,
             );
 
+            // Log progress: field name, X/total, and value found
+            const valuePreview =
+              fieldResult.fieldValue != null
+                ? String(fieldResult.fieldValue).substring(0, 50)
+                : 'null';
+            this.logger.log(
+              `[${fieldIndex}/${totalFields}] ✓ ${schemaField.name}: ${valuePreview}`,
+            );
+
             return { success: true, field: schemaField, result: fieldResult };
           } catch (error: any) {
-            this.logger.warn(
-              `Error extracting field ${schemaField.path}: ${error.message}`,
-            );
+            const isRateLimit = error?.status === 429;
+            if (isRateLimit) {
+              this.logger.warn(
+                `[${fieldIndex}/${totalFields}] ⚠ ${schemaField.name}: Rate limited, will retry`,
+              );
+            } else {
+              this.logger.warn(
+                `[${fieldIndex}/${totalFields}] ✗ ${schemaField.name}: ${error.message}`,
+              );
+            }
             return {
               success: false,
               field: schemaField,
               error: error.message,
-              isRateLimit: error?.status === 429,
+              isRateLimit,
             };
           }
         });
@@ -369,13 +383,24 @@ export class FieldExtractionService implements OnModuleInit {
               batchStart + BATCH_SIZE < allSchemaFields.length
             ) {
               const waitTime = 5000; // Wait 5 seconds on rate limit
+              const remainingFields = allSchemaFields.length - batchEnd;
               this.logger.warn(
-                `Rate limit encountered, waiting ${waitTime}ms before next batch`,
+                `⚠ Rate limit hit. Waiting ${waitTime}ms before processing remaining ${remainingFields} fields`,
               );
               await new Promise((resolve) => setTimeout(resolve, waitTime));
             }
           }
         }
+
+        // Log batch completion progress
+        const completedFields = batchEnd;
+        const totalFields = allSchemaFields.length;
+        const extractedCount = fieldExtractions.filter(
+          (fe) => fe.fieldValue !== null && fe.fieldValue !== undefined && fe.fieldValue !== '',
+        ).length;
+        this.logger.log(
+          `Batch ${batchNum}/${totalBatches} complete: ${completedFields}/${totalFields} fields processed, ${extractedCount} extracted`,
+        );
 
         // Delay between batches (except for last batch)
         if (batchEnd < allSchemaFields.length) {

@@ -105,26 +105,7 @@ export class EmailIntakeService {
       // Use provided body or empty string (body is not stored in DB, only in parsed result)
       const body = emailBody || '';
 
-      // Log detailed information for debugging differences between .eml uploads and IMAP emails
-      this.logger.log(`=== Email Processing Debug Info ===`);
-      this.logger.log(`GmailMessageId: ${gmailMessageId}`);
-      this.logger.log(`Subject: "${emailData.subject || '(empty)'}"`);
-      this.logger.log(`From: "${emailData.from || '(empty)'}"`);
-      this.logger.log(`Body length: ${body.length} chars`);
-      this.logger.log(
-        `Body preview (first 200 chars): "${body.substring(0, 200)}"`,
-      );
-      this.logger.log(
-        `Attachments count: ${emailData.attachments?.length || 0}`,
-      );
-      if (emailData.attachments && emailData.attachments.length > 0) {
-        emailData.attachments.forEach((att: any, idx: number) => {
-          this.logger.log(
-            `  Attachment ${idx + 1}: filename="${att.filename || '(unnamed)'}", contentType="${att.contentType || '(unknown)'}", sizeBytes=${att.sizeBytes || 0}`,
-          );
-        });
-      }
-      this.logger.log(`====================================`);
+      // Removed verbose debug logging - keep logs clean
 
       const classification = await this.submissionClassifier.classify({
         subject: emailData.subject,
@@ -312,88 +293,101 @@ export class EmailIntakeService {
     }
   }
 
+  private processingQueue: Array<{ uid: number; gmailMessageId?: string }> = [];
+  private isProcessing = false;
+
   /**
    * Poll Gmail for new messages (called by cron job or scheduled task)
+   * Processes one email at a time, queues the rest
    */
   async pollForNewEmails() {
-    this.logger.log('Polling Gmail for new messages...');
-
     try {
       const newUids = await this.emailListener.getNewMessages();
-      this.logger.log(`Found ${newUids.length} new messages`);
 
-      const results: Array<{
-        uid: number;
-        success: boolean;
-        result?: any;
-        error?: string;
-      }> = [];
+      // Add new UIDs to queue
       for (const uid of newUids) {
-        this.logger.log(`Starting processing for UID ${uid}...`);
-        const maxRetries = 3;
-        let lastError: Error | null = null;
-        let success = false;
-
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-          try {
-            this.logger.log(
-              `Attempt ${attempt}/${maxRetries}: Fetching email UID ${uid}...`,
-            );
-            // Fetch and store email first
-            const emailData = await this.emailListener.fetchAndStoreEmail(uid);
-            this.logger.log(
-              `Successfully fetched email UID ${uid}, gmailMessageId: ${emailData.gmailMessageId}`,
-            );
-            // Then process it (pass body from parsed email)
-            this.logger.log(
-              `Calling processEmail for ${emailData.gmailMessageId}...`,
-            );
-            const result = await this.processEmail(
-              emailData.gmailMessageId,
-              emailData.body || '',
-            );
-            this.logger.log(
-              `Successfully processed email UID ${uid} (${emailData.gmailMessageId}):`,
-              JSON.stringify(result),
-            );
-            results.push({ uid, success: true, result });
-            success = true;
-            break;
-          } catch (error) {
-            lastError =
-              error instanceof Error ? error : new Error(String(error));
-            this.logger.error(
-              `Failed to process message UID ${uid} (attempt ${attempt}/${maxRetries}):`,
-              lastError.message,
-              lastError.stack,
-            );
-
-            // Wait before retry (exponential backoff)
-            if (attempt < maxRetries) {
-              const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // Max 10 seconds
-              await new Promise((resolve) => setTimeout(resolve, delay));
-            }
-          }
-        }
-
-        if (!success && lastError) {
-          this.logger.error(
-            `Failed to process message UID ${uid} after ${maxRetries} attempts:`,
-            lastError,
-          );
-          results.push({
-            uid,
-            success: false,
-            error: lastError.message,
-          });
+        if (!this.processingQueue.find((q) => q.uid === uid)) {
+          this.processingQueue.push({ uid });
         }
       }
 
-      return { processed: newUids.length, results };
+      // Process queue one at a time
+      if (!this.isProcessing && this.processingQueue.length > 0) {
+        this.isProcessing = true;
+        this.processQueue();
+      }
+
+      return { newEmailsFound: newUids.length, processed: 0 };
     } catch (error) {
       this.logger.error('Error polling Gmail:', error);
       throw error;
     }
+  }
+
+  /**
+   * Process emails from queue one at a time
+   */
+  private async processQueue() {
+    while (this.processingQueue.length > 0) {
+      const queueItem = this.processingQueue.shift();
+      if (!queueItem) break;
+
+      const { uid } = queueItem;
+      const maxRetries = 3;
+      let lastError: Error | null = null;
+      let success = false;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          // Fetch and store email first
+          const emailData = await this.emailListener.fetchAndStoreEmail(uid);
+          queueItem.gmailMessageId = emailData.gmailMessageId;
+
+          this.logger.log(
+            `Processing submission: ${emailData.subject || emailData.gmailMessageId}`,
+          );
+
+          // Then process it (pass body from parsed email)
+          const result = await this.processEmail(
+            emailData.gmailMessageId,
+            emailData.body || '',
+          );
+
+          if (result?.processed) {
+            this.logger.log(
+              `✓ Submission processed: ${emailData.subject || emailData.gmailMessageId}`,
+            );
+          }
+          success = true;
+          break;
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          this.logger.error(
+            `Failed to process message UID ${uid} (attempt ${attempt}/${maxRetries}):`,
+            lastError.message,
+          );
+
+          // Wait before retry (exponential backoff)
+          if (attempt < maxRetries) {
+            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        }
+      }
+
+      if (!success && lastError) {
+        this.logger.error(
+          `✗ Failed to process message UID ${uid} after ${maxRetries} attempts`,
+        );
+      }
+
+      // Small delay between emails to avoid overwhelming the system
+      if (this.processingQueue.length > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+
+    this.isProcessing = false;
   }
 
   /**
