@@ -779,23 +779,18 @@ export class EmailListenerService {
       const connection = await this.connectImap();
       await connection.openBox('INBOX');
 
-      // Only get unread messages
-      // Search for UNSEEN first, then filter by recipient in the header check below
-      // This is more reliable than using ['TO', this.email] in the search criteria
-      const searchCriteriaUnread = ['UNSEEN'];
-      const fetchOptions = {
+      // Simple search: UNSEEN messages TO our email address
+      // Let IMAP do the filtering - it's more reliable than parsing headers
+      const searchCriteria = ['UNSEEN', ['TO', this.email]];
+      const messages = await connection.search(searchCriteria, {
         bodies: 'HEADER',
         struct: true,
-      };
-
-      const messages = await connection.search(
-        searchCriteriaUnread,
-        fetchOptions,
-      );
+      });
+      
       const uids = messages.map((m: any) => m.attributes.uid);
 
       this.logger.log(
-        `Found ${uids.length} unread message(s) in inbox (checking recipients...)`,
+        `Found ${uids.length} unread message(s) addressed to ${this.email}`,
       );
 
       if (uids.length === 0) {
@@ -803,16 +798,18 @@ export class EmailListenerService {
         return [];
       }
 
-      // Filter emails: must be TO our email address AND not FROM our own address
+      // Simple FROM check to prevent infinite loops (only check FROM, not TO/CC)
+      // We already filtered by TO in the search above
       const filteredUids: number[] = [];
       for (const uid of uids) {
         try {
-          // Fetch just the header to check TO and FROM fields
+          // Fetch header to check FROM field only
           const headerMessages = await connection.search([['UID', uid]], {
             bodies: 'HEADER',
             struct: true,
           });
 
+          let skipEmail = false;
           if (headerMessages && headerMessages.length > 0) {
             const headerPart = headerMessages[0].parts?.find(
               (p: any) => p.which === 'HEADER',
@@ -823,57 +820,27 @@ export class EmailListenerService {
                   ? headerPart.body
                   : headerPart.body.toString();
 
-              // Extract TO field (can be multiple recipients)
-              const toMatches = headerStr.match(/To:\s*(.+)/gi);
-              let isToOurEmail = false;
-              if (toMatches) {
-                for (const toMatch of toMatches) {
-                  const toField = toMatch.replace(/^To:\s*/i, '').trim();
-                  if (toField.toLowerCase().includes(this.email.toLowerCase())) {
-                    isToOurEmail = true;
-                    break;
-                  }
-                }
-              }
-
-              // Also check CC field
-              if (!isToOurEmail) {
-                const ccMatches = headerStr.match(/Cc:\s*(.+)/gi);
-                if (ccMatches) {
-                  for (const ccMatch of ccMatches) {
-                    const ccField = ccMatch.replace(/^Cc:\s*/i, '').trim();
-                    if (ccField.toLowerCase().includes(this.email.toLowerCase())) {
-                      isToOurEmail = true;
-                      break;
-                    }
-                  }
-                }
-              }
-
-              // Skip if not addressed to our email
-              if (!isToOurEmail) {
-                continue; // Skip this email - not addressed to us
-              }
-
-              // Extract FROM field
+              // Only check FROM to prevent loops
               const fromMatch = headerStr.match(/From:\s*(.+)/i);
               if (fromMatch) {
                 const fromField = fromMatch[1].trim();
-                // Check if FROM contains our email address (prevent infinite loops)
-                if (
-                  fromField.toLowerCase().includes(this.email.toLowerCase())
-                ) {
-                  continue; // Skip this email - from our own address
+                if (fromField.toLowerCase().includes(this.email.toLowerCase())) {
+                  this.logger.log(
+                    `Skipping UID ${uid} - FROM our own address: ${fromField}`,
+                  );
+                  skipEmail = true;
                 }
               }
             }
           }
 
-          filteredUids.push(uid);
+          if (!skipEmail) {
+            filteredUids.push(uid);
+          }
         } catch (headerError) {
-          // If we can't check the header, include it (better to process than skip incorrectly)
+          // If header check fails, include it (better to process than skip)
           this.logger.warn(
-            `Could not check header for UID ${uid}, including it:`,
+            `Could not check FROM header for UID ${uid}, including it:`,
             headerError,
           );
           filteredUids.push(uid);
@@ -881,7 +848,7 @@ export class EmailListenerService {
       }
 
       this.logger.log(
-        `After filtering: ${filteredUids.length} unread message(s) addressed to ${this.email}`,
+        `After FROM filter: ${filteredUids.length} message(s) to process`,
       );
 
       // Check which ones we haven't processed yet
@@ -930,34 +897,40 @@ export class EmailListenerService {
         return !existingIds.has(newFormat) && !existingIds.has(oldFormat);
       });
 
-      // Removed detailed filtering logs - only return count
+      this.logger.log(
+        `Checking database: ${filteredUids.length} candidate(s), ${existing.length} already processed`,
+      );
 
-      // Mark already-processed messages as read in Gmail to keep it in sync (silent operation)
+      // Mark already-processed messages as read in Gmail to keep it in sync
       const alreadyProcessedUids = filteredUids.filter((uid: number) => {
         const newFormat = `imap-${emailHash}-${uid}`;
         const oldFormat = `imap-${uid}`;
         return existingIds.has(newFormat) || existingIds.has(oldFormat);
       });
       if (alreadyProcessedUids.length > 0) {
-        // Mark as read silently without logging
+        this.logger.log(
+          `Marking ${alreadyProcessedUids.length} already-processed message(s) as read in Gmail`,
+        );
         for (const uid of alreadyProcessedUids) {
           try {
             await connection.addFlags(uid, ['\\Seen']);
           } catch (flagError) {
-            // Only log errors
             this.logger.warn(
-              `Could not mark already-processed email ${uid} as read:`,
+              `Could not mark email ${uid} as read:`,
               flagError,
             );
           }
         }
       }
 
-      // Removed verbose logging about skipped messages - keep logs clean
-
       await connection.end();
 
-      // Only return the count - detailed logging removed for cleaner logs
+      if (newUids.length > 0) {
+        this.logger.log(
+          `Found ${newUids.length} new unprocessed message(s) to process`,
+        );
+      }
+
       return newUids;
     } catch (error) {
       this.logger.error('Error fetching new messages:', error);
