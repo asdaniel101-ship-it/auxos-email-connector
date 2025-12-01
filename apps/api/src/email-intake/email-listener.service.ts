@@ -888,13 +888,55 @@ export class EmailListenerService {
           },
           processingStatus: 'done', // Only skip if already successfully processed
         },
-        select: { gmailMessageId: true },
+        select: { gmailMessageId: true, processingStatus: true },
       });
 
       const existingIds = new Set(existing.map((e) => e.gmailMessageId));
       const newUids = filteredUids.filter(
         (uid: number) => !existingIds.has(`imap-${uid}`),
       );
+
+      // Mark already-processed messages as read in Gmail to keep it in sync
+      // (They were processed before but may still show as unread)
+      const alreadyProcessedUids = filteredUids.filter((uid: number) =>
+        existingIds.has(`imap-${uid}`),
+      );
+      if (alreadyProcessedUids.length > 0) {
+        this.logger.log(
+          `Marking ${alreadyProcessedUids.length} already-processed messages as read in Gmail...`,
+        );
+        for (const uid of alreadyProcessedUids) {
+          try {
+            await connection.addFlags(uid, ['\\Seen']);
+            this.logger.log(`Marked message UID ${uid} as read`);
+          } catch (flagError) {
+            this.logger.warn(
+              `Could not mark already-processed email ${uid} as read:`,
+              flagError,
+            );
+          }
+        }
+      }
+
+      // Log detailed info about why messages were skipped
+      if (filteredUids.length > 0 && newUids.length === 0) {
+        this.logger.log(
+          `All ${filteredUids.length} messages were already processed (status='done'). Checking all statuses for details...`,
+        );
+        const allExisting = await this.prisma.emailMessage.findMany({
+          where: {
+            gmailMessageId: {
+              in: filteredUids.map((uid: number) => `imap-${uid}`),
+            },
+          },
+          select: { gmailMessageId: true, processingStatus: true },
+        });
+        allExisting.forEach((msg) => {
+          this.logger.log(
+            `  - ${msg.gmailMessageId}: status=${msg.processingStatus}`,
+          );
+        });
+      }
 
       await connection.end();
 
