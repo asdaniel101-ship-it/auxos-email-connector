@@ -77,6 +77,7 @@ function FieldSchemaAdminContent() {
       // Log for debugging
       console.log(`Loaded ${definitionsData.length} field definitions from database`);
       console.log(`Schema sections: ${Object.keys(schemaData).join(', ')}`);
+      console.log(`Sample database field names:`, Array.from(defMap.keys()).slice(0, 10));
 
       // Merge database definitions into schema
       const mergedSchema = mergeDefinitionsIntoSchema(schemaData, defMap);
@@ -139,6 +140,10 @@ function FieldSchemaAdminContent() {
             // This is a field definition - merge database info
             // Try to find database definition by field name (key)
             const dbDef = definitions.get(key);
+            if (!dbDef && definitions.size > 0) {
+              // Debug: log when we can't find a match
+              console.log(`No DB definition found for field: "${key}" at path: "${fieldPath}"`);
+            }
             if (dbDef) {
               // Map businessDescription from DB to description in UI
               // Prefer database value over JSON schema value
