@@ -779,48 +779,19 @@ export class EmailListenerService {
       const connection = await this.connectImap();
       await connection.openBox('INBOX');
 
-      // First, try to get unread messages addressed to our email
+      // Only get unread messages addressed to our email
+      // Do NOT check recent emails - if they're already read, they've been processed
       const searchCriteriaUnread = ['UNSEEN', ['TO', this.email]];
       const fetchOptions = {
         bodies: 'HEADER',
         struct: true,
       };
 
-      let messages = await connection.search(
+      const messages = await connection.search(
         searchCriteriaUnread,
         fetchOptions,
       );
-      let uids = messages.map((m: any) => m.attributes.uid);
-
-      this.logger.log(
-        `Found ${uids.length} unread messages addressed to ${this.email}`,
-      );
-
-      // If no unread messages, also check recent emails (last 24 hours) that might have been auto-read
-      if (uids.length === 0) {
-        this.logger.log(
-          'No unread messages found, checking recent emails from last 24 hours...',
-        );
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const dateStr = yesterday
-          .toISOString()
-          .split('T')[0]
-          .replace(/-/g, '-');
-
-        // Search for emails from last 24 hours addressed to our email
-        const searchCriteriaRecent = [
-          ['SINCE', yesterday],
-          ['TO', this.email],
-        ];
-
-        messages = await connection.search(searchCriteriaRecent, fetchOptions);
-        uids = messages.map((m: any) => m.attributes.uid);
-
-        this.logger.log(
-          `Found ${uids.length} recent messages (last 24h) addressed to ${this.email}`,
-        );
-      }
+      const uids = messages.map((m: any) => m.attributes.uid);
 
       if (uids.length === 0) {
         await connection.end();
@@ -893,12 +864,15 @@ export class EmailListenerService {
         (uid: number) => `imap-${emailHash}-${uid}`,
       );
 
+      // Check for ANY existing emails with these UIDs, regardless of status
+      // If an email exists in the database (even with pending/error status), don't process it again
+      // This prevents reprocessing emails that are stuck or failed
       const existing = await this.prisma.emailMessage.findMany({
         where: {
           gmailMessageId: {
             in: currentAccountMessageIds,
           },
-          processingStatus: 'done', // Only skip if already successfully processed
+          // Check ALL statuses - if it exists in DB, don't process again
         },
         select: { gmailMessageId: true, processingStatus: true, to: true },
       });
