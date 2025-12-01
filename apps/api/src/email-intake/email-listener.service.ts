@@ -1116,13 +1116,20 @@ export class EmailListenerService {
       try {
         // First, try to use the stored originalMessageId from the database
         // This is the Message-ID of the email we're replying to
+        this.logger.log(
+          `Checking for originalMessageId in emailData: ${emailData.originalMessageId || 'NULL'}`,
+        );
         if (emailData.originalMessageId) {
           originalMessageId = emailData.originalMessageId.trim();
           if (originalMessageId && !originalMessageId.startsWith('<')) {
             originalMessageId = `<${originalMessageId}>`;
           }
           this.logger.log(
-            `Using stored originalMessageId from database: ${originalMessageId}`,
+            `✓ Using stored originalMessageId from database: ${originalMessageId}`,
+          );
+        } else {
+          this.logger.log(
+            `⚠ originalMessageId not found in database, will try to extract from raw MIME`,
           );
         }
 
@@ -1283,18 +1290,33 @@ export class EmailListenerService {
       // Add reply headers if we have the Message-ID (critical for threading)
       if (originalMessageId) {
         mailOptions.inReplyTo = originalMessageId;
-        this.logger.log(`Setting In-Reply-To header: ${originalMessageId}`);
+        this.logger.log(`✓ Setting In-Reply-To header: ${originalMessageId}`);
+      } else {
+        this.logger.warn(`⚠ No originalMessageId found - reply will NOT thread correctly!`);
       }
 
       if (originalReferences) {
         mailOptions.references = originalReferences;
-        this.logger.log(`Setting References header: ${originalReferences}`);
+        this.logger.log(`✓ Setting References header: ${originalReferences}`);
+      } else {
+        this.logger.warn(`⚠ No originalReferences found - reply may not thread correctly!`);
       }
 
       // Also set replyTo to the original sender for proper threading
       if (emailData.from) {
         mailOptions.replyTo = emailData.from;
+        this.logger.log(`✓ Setting Reply-To: ${emailData.from}`);
       }
+
+      // Log final mail options for debugging (without sensitive data)
+      this.logger.log(`Final mail options:`, {
+        from: mailOptions.from,
+        to: mailOptions.to,
+        subject: mailOptions.subject,
+        inReplyTo: mailOptions.inReplyTo,
+        references: mailOptions.references,
+        replyTo: mailOptions.replyTo,
+      });
 
       const info = await this.transporter.sendMail(mailOptions);
       this.logger.log(
