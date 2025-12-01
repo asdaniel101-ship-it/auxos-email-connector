@@ -779,9 +779,10 @@ export class EmailListenerService {
       const connection = await this.connectImap();
       await connection.openBox('INBOX');
 
-      // Only get unread messages addressed to our email
-      // Do NOT check recent emails - if they're already read, they've been processed
-      const searchCriteriaUnread = ['UNSEEN', ['TO', this.email]];
+      // Only get unread messages
+      // Search for UNSEEN first, then filter by recipient in the header check below
+      // This is more reliable than using ['TO', this.email] in the search criteria
+      const searchCriteriaUnread = ['UNSEEN'];
       const fetchOptions = {
         bodies: 'HEADER',
         struct: true,
@@ -793,18 +794,20 @@ export class EmailListenerService {
       );
       const uids = messages.map((m: any) => m.attributes.uid);
 
+      this.logger.log(
+        `Found ${uids.length} unread message(s) in inbox (checking recipients...)`,
+      );
+
       if (uids.length === 0) {
         await connection.end();
-        this.logger.log('No new messages found');
         return [];
       }
 
-      // Filter out emails FROM our own address to prevent infinite loops
-      // We need to check the FROM header for each message
+      // Filter emails: must be TO our email address AND not FROM our own address
       const filteredUids: number[] = [];
       for (const uid of uids) {
         try {
-          // Fetch just the header to check the FROM field
+          // Fetch just the header to check TO and FROM fields
           const headerMessages = await connection.search([['UID', uid]], {
             bodies: 'HEADER',
             struct: true,
@@ -820,18 +823,47 @@ export class EmailListenerService {
                   ? headerPart.body
                   : headerPart.body.toString();
 
+              // Extract TO field (can be multiple recipients)
+              const toMatches = headerStr.match(/To:\s*(.+)/gi);
+              let isToOurEmail = false;
+              if (toMatches) {
+                for (const toMatch of toMatches) {
+                  const toField = toMatch.replace(/^To:\s*/i, '').trim();
+                  if (toField.toLowerCase().includes(this.email.toLowerCase())) {
+                    isToOurEmail = true;
+                    break;
+                  }
+                }
+              }
+
+              // Also check CC field
+              if (!isToOurEmail) {
+                const ccMatches = headerStr.match(/Cc:\s*(.+)/gi);
+                if (ccMatches) {
+                  for (const ccMatch of ccMatches) {
+                    const ccField = ccMatch.replace(/^Cc:\s*/i, '').trim();
+                    if (ccField.toLowerCase().includes(this.email.toLowerCase())) {
+                      isToOurEmail = true;
+                      break;
+                    }
+                  }
+                }
+              }
+
+              // Skip if not addressed to our email
+              if (!isToOurEmail) {
+                continue; // Skip this email - not addressed to us
+              }
+
               // Extract FROM field
               const fromMatch = headerStr.match(/From:\s*(.+)/i);
               if (fromMatch) {
                 const fromField = fromMatch[1].trim();
-                // Check if FROM contains our email address
+                // Check if FROM contains our email address (prevent infinite loops)
                 if (
                   fromField.toLowerCase().includes(this.email.toLowerCase())
                 ) {
-                  this.logger.log(
-                    `Skipping email UID ${uid} - FROM our own address: ${fromField}`,
-                  );
-                  continue; // Skip this email
+                  continue; // Skip this email - from our own address
                 }
               }
             }
@@ -841,12 +873,16 @@ export class EmailListenerService {
         } catch (headerError) {
           // If we can't check the header, include it (better to process than skip incorrectly)
           this.logger.warn(
-            `Could not check FROM header for UID ${uid}, including it:`,
+            `Could not check header for UID ${uid}, including it:`,
             headerError,
           );
           filteredUids.push(uid);
         }
       }
+
+      this.logger.log(
+        `After filtering: ${filteredUids.length} unread message(s) addressed to ${this.email}`,
+      );
 
       // Check which ones we haven't processed yet
       // Only skip messages that are already successfully processed (status = 'done')
