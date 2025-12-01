@@ -213,18 +213,7 @@ export class FieldExtractionService implements OnModuleInit {
       documentClassifications,
     );
 
-    // Log document parsing summary for debugging
-    this.logger.log('Document parsing summary:');
-    for (const [docType, text] of parsedTexts.entries()) {
-      const charCount = text.length;
-      const preview = text.substring(0, 200).replace(/\n/g, ' ');
-      this.logger.log(
-        `  ${docType}: ${charCount} characters - "${preview}..."`,
-      );
-    }
-    this.logger.log(
-      `Email body length: ${(emailData.body || '').length} characters`,
-    );
+    // Removed verbose document parsing logs - keep logs clean
 
     // Build a map of attachment ID to full parsed text
     // Note: parseAllDocuments groups by docType, so we need to parse individually for proper mapping
