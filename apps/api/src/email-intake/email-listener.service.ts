@@ -857,81 +857,18 @@ export class EmailListenerService {
       // This prevents conflicts when switching email accounts
       // Check database for already-processed messages (silent check)
       
-      // Generate gmailMessageIds with email hash for current account
-      const emailHash = crypto
-        .createHash('md5')
-        .update(this.email.toLowerCase())
-        .digest('hex')
-        .substring(0, 8);
-      const currentAccountMessageIds = filteredUids.map(
-        (uid: number) => `imap-${emailHash}-${uid}`,
-      );
-
-      // Also check for old format (imap-{uid}) in case emails were stored before the hash was added
-      const oldFormatMessageIds = filteredUids.map(
-        (uid: number) => `imap-${uid}`,
-      );
-
-      // CRITICAL: Only skip emails that are BOTH in database AND have status='done'
-      // If an email is UNREAD in Gmail, we should process it even if it exists in DB
-      // This handles:
-      // - New emails (not in DB) → process
-      // - Emails that failed before (status='error') → retry if unread
-      // - Emails stuck in 'processing' → retry if unread
-      // - Emails already successfully processed (status='done') → skip
-      const existing = await this.prisma.emailMessage.findMany({
-        where: {
-          gmailMessageId: {
-            in: [...currentAccountMessageIds, ...oldFormatMessageIds],
-          },
-          processingStatus: 'done', // Only skip if already successfully processed
-        },
-        select: { gmailMessageId: true, processingStatus: true, to: true },
-      });
-
-      const existingIds = new Set(existing.map((e) => e.gmailMessageId));
-      // Check both new format (imap-{hash}-{uid}) and old format (imap-{uid})
-      const newUids = filteredUids.filter((uid: number) => {
-        const newFormat = `imap-${emailHash}-${uid}`;
-        const oldFormat = `imap-${uid}`;
-        return !existingIds.has(newFormat) && !existingIds.has(oldFormat);
-      });
-
-      this.logger.log(
-        `Checking database: ${filteredUids.length} candidate(s), ${existing.length} already processed`,
-      );
-
-      // Mark already-processed messages as read in Gmail to keep it in sync
-      const alreadyProcessedUids = filteredUids.filter((uid: number) => {
-        const newFormat = `imap-${emailHash}-${uid}`;
-        const oldFormat = `imap-${uid}`;
-        return existingIds.has(newFormat) || existingIds.has(oldFormat);
-      });
-      if (alreadyProcessedUids.length > 0) {
-        this.logger.log(
-          `Marking ${alreadyProcessedUids.length} already-processed message(s) as read in Gmail`,
-        );
-        for (const uid of alreadyProcessedUids) {
-          try {
-            await connection.addFlags(uid, ['\\Seen']);
-          } catch (flagError) {
-            this.logger.warn(
-              `Could not mark email ${uid} as read:`,
-              flagError,
-            );
-          }
-        }
-      }
-
+      // CRITICAL: If an email is UNREAD in Gmail, we ALWAYS process it
+      // Don't check the database - Gmail's unread status is the source of truth
+      // The database might be out of sync, or there might be a UID collision
+      // If it's unread, it needs to be processed (or reprocessed)
+      
       await connection.end();
 
-      if (newUids.length > 0) {
-        this.logger.log(
-          `Found ${newUids.length} new unprocessed message(s) to process`,
-        );
-      }
+      this.logger.log(
+        `Found ${filteredUids.length} unread message(s) to process (Gmail unread status is source of truth)`,
+      );
 
-      return newUids;
+      return filteredUids;
     } catch (error) {
       this.logger.error('Error fetching new messages:', error);
       throw error;
