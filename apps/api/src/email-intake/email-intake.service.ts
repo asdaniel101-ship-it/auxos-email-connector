@@ -49,38 +49,18 @@ export class EmailIntakeService {
         }
 
         // Check if already processed or currently processing
-        // BUT: Always process submission emails, even if status is 'done'
-        // This ensures every submission gets a reply, even if there was a previous attempt
-        // Quick check: if it has attachments or contains submission keywords, likely a submission
-        const quickSubmissionCheck =
-          (existing.subject || '').toLowerCase().includes('submission') ||
-          (existing.subject || '').toLowerCase().includes('quote') ||
-          (existing.subject || '').toLowerCase().includes('application') ||
-          (emailBody || '').toLowerCase().includes('submission') ||
-          (emailBody || '').toLowerCase().includes('acord') ||
-          (emailBody || '').toLowerCase().includes('sov') ||
-          (existing.attachments?.length || 0) > 0;
-
-        // If it's likely a submission, always process it (even if status is 'done')
-        if (quickSubmissionCheck && existing.processingStatus === 'done') {
+        // IMPORTANT: Once an email is processed (status='done'), do NOT reprocess it
+        // This prevents infinite loops and duplicate replies
+        if (existing.processingStatus === 'done') {
           this.logger.log(
-            `Email ${gmailMessageId} appears to be a submission and was previously processed, but reprocessing to ensure reply is sent`,
-          );
-          // Reset status to 'pending' so it gets processed
-          await tx.emailMessage.update({
-            where: { gmailMessageId },
-            data: { processingStatus: 'pending' },
-          });
-        } else if (existing.processingStatus === 'done') {
-          this.logger.log(
-            `Email ${gmailMessageId} already processed (status: done) and is not a submission, skipping`,
+            `Email ${gmailMessageId} already processed (status: done), skipping to prevent duplicate processing`,
           );
           return null; // Signal to skip processing
         }
 
-        if (existing.processingStatus === 'processing' && !quickSubmissionCheck) {
+        if (existing.processingStatus === 'processing') {
           this.logger.log(
-            `Email ${gmailMessageId} is already being processed and is not a submission, skipping duplicate`,
+            `Email ${gmailMessageId} is already being processed, skipping duplicate`,
           );
           return null; // Signal to skip processing
         }
