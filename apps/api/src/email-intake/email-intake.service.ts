@@ -48,22 +48,22 @@ export class EmailIntakeService {
           throw new Error(`Email with ID ${gmailMessageId} not found`);
         }
 
-        // Check if already processed or currently processing
-        // IMPORTANT: Once an email is processed (status='done'), do NOT reprocess it
-        // This prevents infinite loops and duplicate replies
-        if (existing.processingStatus === 'done') {
-          this.logger.log(
-            `Email ${gmailMessageId} already processed (status: done), skipping to prevent duplicate processing`,
-          );
-          return null; // Signal to skip processing
-        }
-
+        // CRITICAL: Only skip if currently being processed (prevents race conditions)
+        // DO NOT skip emails with status='done' - if they're unread in Gmail, we process them
+        // This handles:
+        // - Emails processed but Gmail wasn't marked as read
+        // - UID collisions (same UID = different email after mailbox reset)
+        // - Emails that need reprocessing
+        // The atomic transaction below prevents duplicate processing
         if (existing.processingStatus === 'processing') {
           this.logger.log(
             `Email ${gmailMessageId} is already being processed, skipping duplicate`,
           );
           return null; // Signal to skip processing
         }
+
+        // If status is 'done' or 'error', we still process it if it's unread in Gmail
+        // The atomic update below will change status to 'processing', preventing duplicates
 
         // Atomically update to 'processing' status
         await tx.emailMessage.update({
