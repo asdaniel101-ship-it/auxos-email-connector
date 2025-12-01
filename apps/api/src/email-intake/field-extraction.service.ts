@@ -205,8 +205,6 @@ export class FieldExtractionService implements OnModuleInit {
     llmPrompt?: string | null;
     llmResponse?: string | null;
   }> {
-    this.logger.log('Starting field extraction...');
-
     // Parse all documents and store full text by attachment ID
     const parsedTexts = await this.documentParser.parseAllDocuments(
       emailData.attachments || [],
@@ -411,17 +409,7 @@ export class FieldExtractionService implements OnModuleInit {
       ).length;
       const nullCount = fieldExtractions.length - extractedCount;
 
-      this.logger.log(
-        `Per-field extraction completed: ${fieldExtractions.length} fields processed`,
-      );
-      this.logger.log(`  ✓ Extracted: ${extractedCount} fields`);
-      this.logger.log(`  ✗ Null/Missing: ${nullCount} fields`);
-
-      if (nullCount > 0) {
-        this.logger.warn(
-          `Warning: ${nullCount} fields were not extracted. Check document parsing and field definitions.`,
-        );
-      }
+      // Final summary already logged in batch completion above
 
       return {
         data: extractedData,
