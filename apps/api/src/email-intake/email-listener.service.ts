@@ -362,6 +362,7 @@ export class EmailListenerService {
         subject: subject,
         receivedAt: parsed.date || new Date(),
         rawMimeStorageKey: rawMimeKey,
+        originalMessageId: originalMessageId, // Store for proper threading
         processingStatus: 'pending',
       },
     });
@@ -1107,15 +1108,26 @@ export class EmailListenerService {
         `Sending reply to ${filteredRecipients.length} recipients: ${filteredRecipients.join(', ')}`,
       );
 
-      // Get the original Message-ID from the stored raw MIME file
-      // This is critical for proper email threading
+      // Get the original Message-ID for proper email threading
+      // CRITICAL: Always reply to the ORIGINAL message, not the most recent one
       let originalMessageId: string | undefined;
       let originalReferences: string | undefined;
 
       try {
-        // First, try to re-parse the raw MIME file to get Message-ID using mailparser
-        // This is more reliable than regex parsing
-        if (emailData.rawMimeStorageKey) {
+        // First, try to use the stored originalMessageId from the database
+        // This is the Message-ID of the email we're replying to
+        if (emailData.originalMessageId) {
+          originalMessageId = emailData.originalMessageId.trim();
+          if (originalMessageId && !originalMessageId.startsWith('<')) {
+            originalMessageId = `<${originalMessageId}>`;
+          }
+          this.logger.log(
+            `Using stored originalMessageId from database: ${originalMessageId}`,
+          );
+        }
+
+        // If not stored, try to extract from raw MIME file
+        if (!originalMessageId && emailData.rawMimeStorageKey) {
           try {
             const minioClient = this.minioService.getClient();
             const dataStream = await minioClient.getObject(
@@ -1123,19 +1135,16 @@ export class EmailListenerService {
               emailData.rawMimeStorageKey,
             );
 
-            // Read the raw MIME file
             const chunks: Buffer[] = [];
             for await (const chunk of dataStream) {
               chunks.push(chunk);
             }
             const rawMime = Buffer.concat(chunks);
 
-            // Re-parse with mailparser to get proper Message-ID
             const { simpleParser } = require('mailparser');
             const reParsed = await simpleParser(rawMime);
 
             if (reParsed.messageId) {
-              // Ensure Message-ID has angle brackets if not already present
               originalMessageId = reParsed.messageId.trim();
               if (originalMessageId && !originalMessageId.startsWith('<')) {
                 originalMessageId = `<${originalMessageId}>`;
@@ -1145,36 +1154,60 @@ export class EmailListenerService {
               );
             }
 
-            // Build references header - include existing References, In-Reply-To, and Message-ID
+            // Build References header - use the FIRST message in the chain (the original)
+            // This ensures we always reply to the original, not to a previous reply
             const refs: string[] = [];
 
-            // Add existing References if present
+            // If there are existing References, use the FIRST one (the original message)
             if (reParsed.references) {
               const refsArray = Array.isArray(reParsed.references)
                 ? reParsed.references
                 : [reParsed.references];
-              refsArray.forEach((ref: string) => {
-                const trimmed = ref.trim();
-                if (trimmed && !refs.includes(trimmed)) {
-                  refs.push(trimmed);
+              // Take the FIRST reference (the original message in the thread)
+              if (refsArray.length > 0) {
+                const firstRef = refsArray[0].trim();
+                if (firstRef) {
+                  refs.push(firstRef);
+                  // Use the first reference as the original Message-ID for In-Reply-To
+                  if (!originalMessageId) {
+                    originalMessageId = firstRef.startsWith('<')
+                      ? firstRef
+                      : `<${firstRef}>`;
+                  }
                 }
-              });
-            }
-
-            // Add In-Reply-To if present and not already in References
-            if (reParsed.inReplyTo) {
-              const inReplyTo = reParsed.inReplyTo.trim();
-              if (inReplyTo && !refs.includes(inReplyTo)) {
-                refs.push(inReplyTo);
               }
             }
 
-            // Add the Message-ID itself
-            if (originalMessageId && !refs.includes(originalMessageId)) {
+            // If no References, use In-Reply-To if present
+            if (!originalMessageId && reParsed.inReplyTo) {
+              const inReplyTo = reParsed.inReplyTo.trim();
+              originalMessageId = inReplyTo.startsWith('<')
+                ? inReplyTo
+                : `<${inReplyTo}>`;
               refs.push(originalMessageId);
             }
 
+            // If still no original, use the Message-ID itself
+            if (!originalMessageId && reParsed.messageId) {
+              originalMessageId = reParsed.messageId.trim();
+              if (!originalMessageId.startsWith('<')) {
+                originalMessageId = `<${originalMessageId}>`;
+              }
+              refs.push(originalMessageId);
+            }
+
+            // Build References: original message + current message
             if (refs.length > 0) {
+              // Add the current message's Message-ID to the References chain
+              if (reParsed.messageId) {
+                const currentMsgId = reParsed.messageId.trim();
+                const formattedCurrent = currentMsgId.startsWith('<')
+                  ? currentMsgId
+                  : `<${currentMsgId}>`;
+                if (!refs.includes(formattedCurrent)) {
+                  refs.push(formattedCurrent);
+                }
+              }
               originalReferences = refs.join(' ');
               this.logger.log(`Built References header: ${originalReferences}`);
             } else if (originalMessageId) {
@@ -1188,20 +1221,6 @@ export class EmailListenerService {
           }
         }
 
-        // Fallback: use originalMessageId if it was passed in emailData
-        if (!originalMessageId && emailData.originalMessageId) {
-          originalMessageId = emailData.originalMessageId.trim();
-          if (originalMessageId && !originalMessageId.startsWith('<')) {
-            originalMessageId = `<${originalMessageId}>`;
-          }
-          if (originalMessageId) {
-            originalReferences = originalMessageId;
-            this.logger.log(
-              `Using originalMessageId from emailData: ${originalMessageId}`,
-            );
-          }
-        }
-
         // Final fallback: construct a Message-ID format (not ideal for threading)
         if (!originalMessageId) {
           if (
@@ -1209,7 +1228,6 @@ export class EmailListenerService {
             !emailData.gmailMessageId.startsWith('imap-') &&
             !emailData.gmailMessageId.startsWith('eml-')
           ) {
-            // If gmailMessageId is already a proper Message-ID format, use it
             originalMessageId = emailData.gmailMessageId.trim();
             if (originalMessageId && !originalMessageId.startsWith('<')) {
               originalMessageId = `<${originalMessageId}>`;
@@ -1228,7 +1246,7 @@ export class EmailListenerService {
           originalMessageId = `<${originalMessageId}>`;
         }
 
-        this.logger.log(`Final Message-ID for reply: ${originalMessageId}`);
+        this.logger.log(`Final Message-ID for reply (In-Reply-To): ${originalMessageId}`);
         this.logger.log(`Final References for reply: ${originalReferences}`);
       } catch (error) {
         this.logger.error('Error determining original Message-ID:', error);

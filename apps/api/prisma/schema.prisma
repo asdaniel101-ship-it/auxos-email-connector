@@ -69,6 +69,7 @@ model EmailMessage {
   subject           String
   receivedAt        DateTime
   rawMimeStorageKey String? // Points to blob store (S3/GCS)
+  originalMessageId String? // Original Message-ID header for proper threading
   isSubmission      Boolean               @default(false)
   submissionType    SubmissionType?
   processingStatus  EmailProcessingStatus @default(pending)

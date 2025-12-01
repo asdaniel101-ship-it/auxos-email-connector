@@ -34,16 +34,47 @@ export class EmailIntakeService {
     this.logger.log(`Processing email: ${gmailMessageId}`);
 
     try {
-      // 1. Get stored email data
-      const emailData = await this.prisma.emailMessage.findUnique({
-        where: { gmailMessageId },
-        include: {
-          attachments: true,
-        },
+      // 1. Atomically check and update status to prevent duplicate processing
+      // Use a transaction to ensure only one process can claim the email
+      const emailData = await this.prisma.$transaction(async (tx) => {
+        const existing = await tx.emailMessage.findUnique({
+          where: { gmailMessageId },
+          include: {
+            attachments: true,
+          },
+        });
+
+        if (!existing) {
+          throw new Error(`Email with ID ${gmailMessageId} not found`);
+        }
+
+        // Check if already processed or currently processing
+        if (existing.processingStatus === 'done') {
+          this.logger.log(
+            `Email ${gmailMessageId} already processed (status: done), skipping`,
+          );
+          return null; // Signal to skip processing
+        }
+
+        if (existing.processingStatus === 'processing') {
+          this.logger.log(
+            `Email ${gmailMessageId} is already being processed, skipping duplicate`,
+          );
+          return null; // Signal to skip processing
+        }
+
+        // Atomically update to 'processing' status
+        await tx.emailMessage.update({
+          where: { gmailMessageId },
+          data: { processingStatus: 'processing' },
+        });
+
+        return existing;
       });
 
+      // If transaction returned null, email was already processed/processing
       if (!emailData) {
-        throw new Error(`Email with ID ${gmailMessageId} not found`);
+        return { processed: false, reason: 'already_processed_or_processing' };
       }
 
       // 2. Check if email is from our own address to prevent infinite loops
@@ -67,12 +98,6 @@ export class EmailIntakeService {
         });
         return { processed: false, reason: 'from_system_address' };
       }
-
-      // Mark as processing
-      await this.prisma.emailMessage.update({
-        where: { gmailMessageId },
-        data: { processingStatus: 'processing' },
-      });
 
       // 3. Classify if it's a submission
       // Use provided body or empty string (body is not stored in DB, only in parsed result)
