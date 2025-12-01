@@ -61,7 +61,8 @@ enum DocumentType {
 
 model EmailMessage {
   id                String                @id @default(cuid())
-  gmailMessageId    String                @unique
+  gmailMessageId    String                @unique // Gmail UID reference (not used as internal ID)
+  submissionNumber  Int?                  @unique // Sequential submission number (1, 2, 3...) - only set for submissions
   threadId          String
   from              String
   to                String[]
@@ -81,6 +82,7 @@ model EmailMessage {
   extractionResult ExtractionResult?
 
   @@index([gmailMessageId])
+  @@index([submissionNumber])
   @@index([threadId])
   @@index([processingStatus])
   @@index([isSubmission])

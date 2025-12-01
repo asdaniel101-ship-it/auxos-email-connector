@@ -49,16 +49,38 @@ export class EmailIntakeService {
         }
 
         // Check if already processed or currently processing
-        if (existing.processingStatus === 'done') {
+        // BUT: Always process submission emails, even if status is 'done'
+        // This ensures every submission gets a reply, even if there was a previous attempt
+        // Quick check: if it has attachments or contains submission keywords, likely a submission
+        const quickSubmissionCheck =
+          (existing.subject || '').toLowerCase().includes('submission') ||
+          (existing.subject || '').toLowerCase().includes('quote') ||
+          (existing.subject || '').toLowerCase().includes('application') ||
+          (emailBody || '').toLowerCase().includes('submission') ||
+          (emailBody || '').toLowerCase().includes('acord') ||
+          (emailBody || '').toLowerCase().includes('sov') ||
+          (existing.attachments?.length || 0) > 0;
+
+        // If it's likely a submission, always process it (even if status is 'done')
+        if (quickSubmissionCheck && existing.processingStatus === 'done') {
           this.logger.log(
-            `Email ${gmailMessageId} already processed (status: done), skipping`,
+            `Email ${gmailMessageId} appears to be a submission and was previously processed, but reprocessing to ensure reply is sent`,
+          );
+          // Reset status to 'pending' so it gets processed
+          await tx.emailMessage.update({
+            where: { gmailMessageId },
+            data: { processingStatus: 'pending' },
+          });
+        } else if (existing.processingStatus === 'done') {
+          this.logger.log(
+            `Email ${gmailMessageId} already processed (status: done) and is not a submission, skipping`,
           );
           return null; // Signal to skip processing
         }
 
-        if (existing.processingStatus === 'processing') {
+        if (existing.processingStatus === 'processing' && !quickSubmissionCheck) {
           this.logger.log(
-            `Email ${gmailMessageId} is already being processed, skipping duplicate`,
+            `Email ${gmailMessageId} is already being processed and is not a submission, skipping duplicate`,
           );
           return null; // Signal to skip processing
         }
@@ -249,18 +271,52 @@ export class EmailIntakeService {
         extractionResult?.fieldExtractions || [],
       );
 
-      // 9. Mark as done
+      // 9. Assign sequential submission number and mark as done
+      // Get the next submission number (highest existing + 1, or 1 if none exist)
+      const lastSubmission = await this.prisma.emailMessage.findFirst({
+        where: {
+          isSubmission: true,
+          submissionNumber: { not: null },
+        },
+        orderBy: {
+          submissionNumber: 'desc',
+        },
+        select: { submissionNumber: true },
+      });
+
+      const nextSubmissionNumber =
+        lastSubmission?.submissionNumber != null
+          ? lastSubmission.submissionNumber + 1
+          : 1;
+
+      this.logger.log(
+        `Assigning submission number ${nextSubmissionNumber} to email ${gmailMessageId}`,
+      );
+
       await this.prisma.emailMessage.update({
         where: { gmailMessageId },
         data: {
           isSubmission: true,
           submissionType: classification.submissionType || null,
+          submissionNumber: nextSubmissionNumber,
           processingStatus: 'done',
         },
       });
 
-      this.logger.log(`Successfully processed submission: ${gmailMessageId}`);
-      return { processed: true, emailMessageId: emailData.id };
+      // Get the updated email with submission number
+      const updatedEmail = await this.prisma.emailMessage.findUnique({
+        where: { gmailMessageId },
+        select: { id: true, submissionNumber: true },
+      });
+
+      this.logger.log(
+        `Successfully processed submission: ${gmailMessageId} (Internal ID: ${emailData.id}, Submission #${updatedEmail?.submissionNumber || 'N/A'})`,
+      );
+      return {
+        processed: true,
+        emailMessageId: emailData.id, // Internal Prisma ID
+        submissionNumber: updatedEmail?.submissionNumber || null, // Sequential submission number
+      };
     } catch (error) {
       this.logger.error(`Error processing email ${gmailMessageId}:`, error);
 
@@ -293,18 +349,32 @@ export class EmailIntakeService {
         error?: string;
       }> = [];
       for (const uid of newUids) {
+        this.logger.log(`Starting processing for UID ${uid}...`);
         const maxRetries = 3;
         let lastError: Error | null = null;
         let success = false;
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
           try {
+            this.logger.log(
+              `Attempt ${attempt}/${maxRetries}: Fetching email UID ${uid}...`,
+            );
             // Fetch and store email first
             const emailData = await this.emailListener.fetchAndStoreEmail(uid);
+            this.logger.log(
+              `Successfully fetched email UID ${uid}, gmailMessageId: ${emailData.gmailMessageId}`,
+            );
             // Then process it (pass body from parsed email)
+            this.logger.log(
+              `Calling processEmail for ${emailData.gmailMessageId}...`,
+            );
             const result = await this.processEmail(
               emailData.gmailMessageId,
               emailData.body || '',
+            );
+            this.logger.log(
+              `Successfully processed email UID ${uid} (${emailData.gmailMessageId}):`,
+              JSON.stringify(result),
             );
             results.push({ uid, success: true, result });
             success = true;
@@ -312,9 +382,10 @@ export class EmailIntakeService {
           } catch (error) {
             lastError =
               error instanceof Error ? error : new Error(String(error));
-            this.logger.warn(
+            this.logger.error(
               `Failed to process message UID ${uid} (attempt ${attempt}/${maxRetries}):`,
               lastError.message,
+              lastError.stack,
             );
 
             // Wait before retry (exponential backoff)

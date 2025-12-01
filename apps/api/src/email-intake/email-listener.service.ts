@@ -121,8 +121,14 @@ export class EmailListenerService {
     let gmailMessageId: string;
 
     if (imapUid !== undefined) {
-      // For IMAP emails, use imap-{uid} format so we can track them
-      gmailMessageId = `imap-${imapUid}`;
+      // For IMAP emails, include email address in ID to make it unique per account
+      // This prevents conflicts when switching email accounts (same UID = different message)
+      const emailHash = crypto
+        .createHash('md5')
+        .update(this.email.toLowerCase())
+        .digest('hex')
+        .substring(0, 8);
+      gmailMessageId = `imap-${emailHash}-${imapUid}`;
     } else if (rawBuffer && rawBuffer.length > 0) {
       // For .eml uploads, use a hash of the content to avoid duplicates
       const hash = crypto.createHash('sha256').update(rawBuffer).digest('hex');
@@ -231,6 +237,20 @@ export class EmailListenerService {
     });
 
     if (existingEmail) {
+      // With the new gmailMessageId format (includes email hash), this should only match
+      // messages from the same email account. But double-check the 'to' field to be safe.
+      const toMatchesCurrentEmail = toAddresses.some((addr) =>
+        addr.toLowerCase().includes(this.email.toLowerCase()),
+      );
+      
+      if (!toMatchesCurrentEmail) {
+        // This shouldn't happen with the new ID format, but if it does, log a warning
+        // and still update (the ID should be unique per account now)
+        this.logger.warn(
+          `Email with gmailMessageId ${gmailMessageId} exists but 'to' field doesn't match current email. This might indicate an ID collision. Existing to: ${JSON.stringify(existingEmail.to)}, New to: ${JSON.stringify(toAddresses)}. Proceeding with update.`,
+        );
+      }
+
       this.logger.log(
         `Email with gmailMessageId ${gmailMessageId} already exists, updating with fresh data...`,
       );
@@ -881,33 +901,58 @@ export class EmailListenerService {
 
       // Check which ones we haven't processed yet
       // Only skip messages that are already successfully processed (status = 'done')
-      // IMPORTANT: Also verify the 'to' field contains current email to avoid matching
-      // messages from old email addresses after an email address change
+      // IMPORTANT: gmailMessageId now includes email hash, so it's unique per account
+      // This prevents conflicts when switching email accounts
       this.logger.log(
         `Checking database for already-processed messages (looking for emails to: ${this.email})...`,
       );
+      
+      // Generate gmailMessageIds with email hash for current account
+      const emailHash = crypto
+        .createHash('md5')
+        .update(this.email.toLowerCase())
+        .digest('hex')
+        .substring(0, 8);
+      const currentAccountMessageIds = filteredUids.map(
+        (uid: number) => `imap-${emailHash}-${uid}`,
+      );
+
       const existing = await this.prisma.emailMessage.findMany({
         where: {
           gmailMessageId: {
-            in: filteredUids.map((uid: number) => `imap-${uid}`),
+            in: currentAccountMessageIds,
           },
           processingStatus: 'done', // Only skip if already successfully processed
-          to: {
-            has: this.email.toLowerCase(), // Verify it was sent to the current email address (case-insensitive)
-          },
         },
         select: { gmailMessageId: true, processingStatus: true, to: true },
       });
 
       const existingIds = new Set(existing.map((e) => e.gmailMessageId));
       const newUids = filteredUids.filter(
-        (uid: number) => !existingIds.has(`imap-${uid}`),
+        (uid: number) => !existingIds.has(`imap-${emailHash}-${uid}`),
       );
+
+      // Log detailed info about what was filtered and why
+      if (filteredUids.length > 0) {
+        this.logger.log(
+          `Filtering results: ${filteredUids.length} total UIDs, ${existing.length} found in DB (status='done' AND to contains '${this.email}'), ${newUids.length} are new`,
+        );
+        if (newUids.length > 0) {
+          this.logger.log(
+            `New UIDs to process: ${newUids.join(', ')}`,
+          );
+        }
+        if (existing.length > 0) {
+          this.logger.log(
+            `Already processed UIDs (skipped): ${existing.map((e) => e.gmailMessageId).join(', ')}`,
+          );
+        }
+      }
 
       // Mark already-processed messages as read in Gmail to keep it in sync
       // (They were processed before but may still show as unread)
       const alreadyProcessedUids = filteredUids.filter((uid: number) =>
-        existingIds.has(`imap-${uid}`),
+        existingIds.has(`imap-${emailHash}-${uid}`),
       );
       if (alreadyProcessedUids.length > 0) {
         this.logger.log(
@@ -938,7 +983,7 @@ export class EmailListenerService {
         const allExisting = await this.prisma.emailMessage.findMany({
           where: {
             gmailMessageId: {
-              in: filteredUids.map((uid: number) => `imap-${uid}`),
+              in: currentAccountMessageIds,
             },
           },
           select: { gmailMessageId: true, processingStatus: true, to: true },
@@ -948,6 +993,48 @@ export class EmailListenerService {
             `  - ${msg.gmailMessageId}: status=${msg.processingStatus}, to=${JSON.stringify(msg.to)}`,
           );
         });
+      }
+
+      // Also check if there are messages with other statuses that should be retried
+      if (newUids.length === 0 && filteredUids.length > 0) {
+        const allStatuses = await this.prisma.emailMessage.findMany({
+          where: {
+            gmailMessageId: {
+              in: filteredUids.map((uid: number) => `imap-${uid}`),
+            },
+          },
+          select: { gmailMessageId: true, processingStatus: true, to: true },
+        });
+        const pendingOrError = allStatuses.filter(
+          (msg) =>
+            msg.processingStatus === 'pending' ||
+            msg.processingStatus === 'error' ||
+            msg.processingStatus === 'processing',
+        );
+        if (pendingOrError.length > 0) {
+          this.logger.warn(
+            `Found ${pendingOrError.length} messages with non-'done' status that should be retried:`,
+          );
+          pendingOrError.forEach((msg) => {
+            this.logger.warn(
+              `  - ${msg.gmailMessageId}: status=${msg.processingStatus}, to=${JSON.stringify(msg.to)}`,
+            );
+          });
+          // Return these UIDs so they can be retried
+          const retryUids = pendingOrError
+            .map((msg) => {
+              // Match both old format (imap-{uid}) and new format (imap-{hash}-{uid})
+              const uidMatch = msg.gmailMessageId.match(/^imap-([a-f0-9]{8}-)?(\d+)$/);
+              return uidMatch ? parseInt(uidMatch[2] || uidMatch[1], 10) : null;
+            })
+            .filter((uid): uid is number => uid !== null);
+          if (retryUids.length > 0) {
+            this.logger.log(
+              `Returning ${retryUids.length} UIDs for retry: ${retryUids.join(', ')}`,
+            );
+            return retryUids;
+          }
+        }
       }
 
       await connection.end();
