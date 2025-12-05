@@ -234,6 +234,27 @@ export class EmailListenerService {
     // Extract subject
     const subject = parsed.subject || '';
 
+    // Store raw MIME in MinIO (if we have a raw buffer)
+    let rawMimeKey: string | null = null;
+    if (rawBuffer && rawBuffer.length > 0) {
+      try {
+        rawMimeKey = `emails/raw/${gmailMessageId}.eml`;
+        const minioClient = this.minioService.getClient();
+        await minioClient.putObject(
+          'documents',
+          rawMimeKey,
+          rawBuffer,
+          rawBuffer.length,
+          {
+            'Content-Type': 'message/rfc822',
+          },
+        );
+        this.logger.log(`Stored raw MIME for email ${gmailMessageId}`);
+      } catch (mimeError) {
+        this.logger.warn(`Failed to store raw MIME for email ${gmailMessageId}:`, mimeError);
+      }
+    }
+
     // CRITICAL: Use upsert to handle Message-ID uniqueness
     // If email already exists, only update if it's not currently being processed
     // This prevents overwriting an email that's in the middle of processing
@@ -247,6 +268,7 @@ export class EmailListenerService {
         cc: ccAddresses,
         subject: subject,
         receivedAt: parsed.date || new Date(),
+        ...(rawMimeKey ? { rawMimeStorageKey: rawMimeKey } : {}),
         // Only reset to pending if it's done/error (not if it's processing)
         // This is handled by a conditional update in the upsert
       },
@@ -259,6 +281,7 @@ export class EmailListenerService {
         subject: subject,
         receivedAt: parsed.date || new Date(),
         originalMessageId: parsed.messageId ? parsed.messageId.replace(/^<|>$/g, '') : null,
+        rawMimeStorageKey: rawMimeKey,
         processingStatus: 'pending',
         isSubmission: false,
       },
@@ -336,199 +359,12 @@ export class EmailListenerService {
         };
       }
 
-      // Return existing email with attachments (if any)
-      return {
-        ...emailMessage,
-        attachments: emailMessage.attachments || [],
-        body: parsed.text || parsed.html || '',
-        originalMessageId: parsed.messageId ? parsed.messageId.replace(/^<|>$/g, '') : null,
-      };
-    }
-
-    // Store raw MIME in MinIO
-    const rawMimeKey = `emails/raw/${gmailMessageId}.eml`;
-    const minioClient = this.minioService.getClient();
-    // Use provided raw buffer, or try to get from parsed.raw, or create empty
-    const mimeBuffer =
-      rawBuffer || (parsed.raw ? Buffer.from(parsed.raw) : Buffer.from(''));
-    await minioClient.putObject(
-      'documents',
-      rawMimeKey,
-      mimeBuffer,
-      mimeBuffer.length,
-      {
-        'Content-Type': 'message/rfc822',
-      },
-    );
-
-    this.logger.log(
-      `Storing email: from="${fromAddress}", subject="${subject}", to=${toAddresses.length}, cc=${ccAddresses.length}`,
-    );
-
-    // Extract original Message-ID from parsed email for proper threading
-    const originalMessageId = parsed.messageId || null;
-
-    // Store email message
-    const emailMessage = await this.prisma.emailMessage.create({
-      data: {
-        gmailMessageId,
-        threadId,
-        from: fromAddress,
-        to: toAddresses,
-        cc: ccAddresses,
-        subject: subject,
-        receivedAt: parsed.date || new Date(),
-        rawMimeStorageKey: rawMimeKey,
-        originalMessageId: originalMessageId, // Store for proper threading
-        processingStatus: 'pending',
-      },
-    });
-
-    // Store attachments
-    const attachments: any[] = [];
-    this.logger.log(
-      `Storing attachments: ${parsed.attachments?.length || 0} attachments found`,
-    );
-
-    // Log detailed attachment info for debugging
-    if (parsed.attachments && parsed.attachments.length > 0) {
-      this.logger.log(`=== Attachment Details ===`);
-      parsed.attachments.forEach((att: any, idx: number) => {
-        const contentType = att.contentType || 'unknown';
-        const filename = att.filename || 'unnamed';
-        const contentTypeInfo = typeof att.content;
-        const contentLength = att.content
-          ? Buffer.isBuffer(att.content)
-            ? att.content.length
-            : typeof att.content === 'string'
-              ? att.content.length
-              : Array.isArray(att.content)
-                ? att.content.length
-                : 'unknown'
-          : 'null';
-        this.logger.log(
-          `  Raw attachment ${idx + 1}: filename="${filename}", contentType="${contentType}", content type=${contentTypeInfo}, content length=${contentLength}`,
-        );
-      });
-      this.logger.log(`========================`);
-    }
-
-    if (parsed.attachments && parsed.attachments.length > 0) {
-      for (let i = 0; i < parsed.attachments.length; i++) {
-        const att = parsed.attachments[i];
-        try {
-          this.logger.log(
-            `Processing attachment ${i + 1}/${parsed.attachments.length}: ${att.filename || 'unnamed'}`,
-          );
-
-          const attachmentId = crypto.randomBytes(16).toString('hex');
-          const fileKey = `emails/attachments/${gmailMessageId}/${attachmentId}-${att.filename || 'attachment'}`;
-
-          // Store attachment in MinIO
-          // Handle different content types - could be Buffer, string, or array
-          let contentBuffer: Buffer;
-          if (Buffer.isBuffer(att.content)) {
-            contentBuffer = att.content;
-            this.logger.log(
-              `  - Content is already a Buffer: ${contentBuffer.length} bytes`,
-            );
-          } else if (typeof att.content === 'string') {
-            // Try base64 first, then utf-8
-            try {
-              contentBuffer = Buffer.from(att.content, 'base64');
-              this.logger.log(
-                `  - Decoded from base64: ${contentBuffer.length} bytes`,
-              );
-            } catch {
-              contentBuffer = Buffer.from(att.content, 'utf-8');
-              this.logger.log(
-                `  - Decoded from utf-8: ${contentBuffer.length} bytes`,
-              );
-            }
-          } else if (Array.isArray(att.content)) {
-            contentBuffer = Buffer.concat(
-              att.content.map((chunk: any) =>
-                Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
-              ),
-            );
-            this.logger.log(
-              `  - Concatenated from array: ${contentBuffer.length} bytes`,
-            );
-          } else {
-            contentBuffer = Buffer.from(String(att.content));
-            this.logger.log(
-              `  - Converted from string: ${contentBuffer.length} bytes`,
-            );
-          }
-
-          const sizeBytes = contentBuffer.length;
-          this.logger.log(
-            `  - Final size: ${sizeBytes} bytes, Content-Type: ${att.contentType || 'application/octet-stream'}`,
-          );
-
-          // Warn if attachment seems suspiciously small (might be incomplete)
-          if (
-            sizeBytes < 100 &&
-            (att.filename?.endsWith('.pdf') ||
-              att.filename?.endsWith('.xlsx') ||
-              att.filename?.endsWith('.docx'))
-          ) {
-            this.logger.warn(
-              `  - WARNING: Attachment ${att.filename} is very small (${sizeBytes} bytes) - may be incomplete or corrupted!`,
-            );
-          }
-
-          await minioClient.putObject(
-            'documents',
-            fileKey,
-            contentBuffer,
-            sizeBytes,
-            {
-              'Content-Type': att.contentType || 'application/octet-stream',
-            },
-          );
-
-          const attachment = await this.prisma.emailAttachment.create({
-            data: {
-              emailMessageId: emailMessage.id,
-              filename: att.filename || 'unnamed',
-              contentType: att.contentType || 'application/octet-stream',
-              sizeBytes: sizeBytes,
-              storageKey: fileKey,
-              documentType: 'other', // Will be classified later
-            },
-          });
-
-          attachments.push(attachment);
-          this.logger.log(
-            `  - Successfully stored attachment: ${attachment.id}`,
-          );
-        } catch (attError) {
-          this.logger.error(`  - Error storing attachment ${i + 1}:`, attError);
-          this.logger.error(
-            `  - Attachment details: filename="${att.filename}", contentType="${att.contentType}", content type=${typeof att.content}`,
-          );
-          // Continue with other attachments
-        }
-      }
-    } else {
-      this.logger.warn(
-        `No attachments found in parsed email for ${gmailMessageId}`,
-      );
-      this.logger.warn(
-        `This could indicate an IMAP parsing issue - attachments might not have been extracted correctly`,
-      );
-    }
-
-    this.logger.log(
-      `Successfully stored ${attachments.length} attachments for email ${gmailMessageId}`,
-    );
-
+    // Return existing email with attachments (if any)
     return {
       ...emailMessage,
-      attachments,
+      attachments: emailMessage.attachments || [],
       body: parsed.text || parsed.html || '',
-      originalMessageId, // Add this for reply threading (from parsed.messageId)
+      originalMessageId: parsed.messageId ? parsed.messageId.replace(/^<|>$/g, '') : null,
     };
   }
 
