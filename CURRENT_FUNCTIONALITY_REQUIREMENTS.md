@@ -114,30 +114,50 @@ This document captures the current functionality across all pages and systems. *
   - **Method**: `handleEmailPolling()` calls `emailIntakeService.pollForNewEmails()`
 
 ### Processing Status Checks
-- **Requirement**: Only process emails with status:
+- **Requirement**: Gmail's unread status is the source of truth
+  - If an email is **UNREAD in Gmail**, it will be processed regardless of database status
+  - This handles cases where:
+    - Email was processed but Gmail wasn't marked as read
+    - UID collisions (same UID = different email after mailbox reset)
+    - Emails that need reprocessing
+- **Requirement**: DO NOT process emails with status:
+  - `processing` - Currently being processed by another instance (prevents duplicates)
+- **Requirement**: Process emails with ANY status if they're unread in Gmail:
   - `pending` - New emails that haven't been processed
   - `error` - Emails that failed processing (retry)
-- **Requirement**: DO NOT process emails with status:
-  - `done` - Successfully processed (unless unread in Gmail)
-  - `processing` - Currently being processed (prevents duplicates)
+  - `done` - Successfully processed but unread in Gmail (reprocess)
 - **Implementation**: 
-  - Atomic transaction in `processEmail()` uses `updateMany` with conditional WHERE clause
-  - Only updates if `processingStatus != 'processing'`
-  - **File**: `apps/api/src/email-intake/email-intake.service.ts` (lines 51-84)
+  - `getNewMessages()` returns ALL unread emails from Gmail (no database filtering)
+  - **File**: `apps/api/src/email-intake/email-listener.service.ts` (lines 850-860)
   - **Logic**: 
     ```typescript
-    if (existing.processingStatus === 'processing') {
-      return null; // Skip - already being processed
-    }
-    // Use conditional update: only update if status != 'processing'
-    const updateResult = await tx.emailMessage.updateMany({
-      where: {
-        gmailMessageId,
-        processingStatus: { not: 'processing' },
-      },
-      data: { processingStatus: 'processing' },
-    });
+    // CRITICAL: If an email is UNREAD in Gmail, we ALWAYS process it
+    // Don't check the database - Gmail's unread status is the source of truth
+    // The database might be out of sync, or there might be a UID collision
+    // If it's unread, it needs to be processed (or reprocessed)
+    return filteredUids; // Return all unread emails
     ```
+  - Atomic transaction in `processEmail()` prevents duplicate processing:
+    - **File**: `apps/api/src/email-intake/email-intake.service.ts` (lines 51-84)
+    - **Logic**: 
+      ```typescript
+      // Only skip if currently being processed (prevents race conditions)
+      if (existing.processingStatus === 'processing') {
+        return null; // Skip - already being processed
+      }
+      // Use conditional update: only update if status != 'processing'
+      const updateResult = await tx.emailMessage.updateMany({
+        where: {
+          gmailMessageId,
+          processingStatus: { not: 'processing' },
+        },
+        data: { processingStatus: 'processing' },
+      });
+      // If updateResult.count === 0, another process already claimed it
+      if (updateResult.count === 0) {
+        return null; // Skip - claimed by another process
+      }
+      ```
 
 ### Always Reply to Original Email
 - **Requirement**: ALWAYS reply to the original submission email, never send a new email
@@ -256,10 +276,11 @@ When making updates, verify:
 - [ ] Dashboard shows all submissions
 - [ ] Field Schema page shows all fields with complete information
 - [ ] Emails are scanned every 30 seconds
-- [ ] Only new/pending emails are processed
+- [ ] All unread emails in Gmail are processed (regardless of database status)
+- [ ] Emails with status 'processing' are skipped (prevents duplicates)
 - [ ] Replies always thread to original email
 - [ ] No replies are sent to submit@auxos.dev
-- [ ] No duplicate processing occurs
+- [ ] No duplicate processing occurs (atomic transaction prevents this)
 
 ---
 
