@@ -504,10 +504,10 @@ For each field, follow this search order:
    - Search thoroughly in these sections first
 2. IF NOT FOUND: Then search ALL other available document sections
    - Don't give up after checking "Where to Look" sections
-   - Continue searching in all other document types (acord, sov, loss_run, schedule, supplemental, email_body, other)
+   - Continue searching in all other document types (sov, loss_run, schedule, supplemental, payroll, questionnaire, application, email_body, other)
    - The value might be in an unexpected location
 
-Example: If "Where to Look" says "SOV, ACORD" but you don't find the value there, still check:
+Example: If "Where to Look" says "SOV, payroll" but you don't find the value there, still check:
 - email_body
 - loss_run
 - schedule
@@ -612,9 +612,9 @@ ${JSON.stringify(enhancedSchema, null, 2)}
 IMPORTANT: For each field in the schema, pay special attention to:
 - businessDescription: This explains what the field represents and its business context
 - extractorLogic: Follow these detailed instructions on HOW to extract this specific field
-- whereToLook: This tells you WHICH document types to search first (e.g., "acord", "sov", "email_body", "loss_run"). 
+- whereToLook: This tells you WHICH document types to search first (e.g., "sov", "email_body", "loss_run", "payroll", "questionnaire", "application"). 
   When you see whereToLook for a field, prioritize searching in those specific document sections below.
-  Document sections are labeled with section names that match the source values exactly (e.g., "=== acord ===", "=== email_body ===").
+  Document sections are labeled with section names that match the source values exactly (e.g., "=== payroll ===", "=== email_body ===").
 
 CRITICAL EXTRACTION GUIDELINES:
 1. For fields with whereToLook including "email body" or "email signature": 
@@ -650,12 +650,12 @@ Return a JSON object with this structure:
       "fieldPath": "submission.namedInsured",
       "fieldName": "namedInsured",
       "fieldValue": "Harborview Manufacturing, LLC",
-      "source": "acord",
-      "documentChunk": "Named Insured: Harborview Manufacturing, LLC\\nAddress: 1250 Harbor Park Drive",
-      "highlightedText": "Named Insured: <mark>Harborview Manufacturing, LLC</mark>\\nAddress: 1250 Harbor Park Drive",
+      "source": "questionnaire",
+      "documentChunk": "Applicant Name: Harborview Manufacturing, LLC\\nAddress: 1250 Harbor Park Drive",
+      "highlightedText": "Applicant Name: <mark>Harborview Manufacturing, LLC</mark>\\nAddress: 1250 Harbor Park Drive",
       "chunkStartIndex": 150,
       "chunkEndIndex": 250,
-      "llmReasoning": "Found this value in the ACORD 125 form under the 'Named Insured' field. The value was clearly labeled and matched the businessDescription requirement for a legal entity name. I searched the ACORD forms first as indicated in whereToLook, and found an exact match."
+      "llmReasoning": "Found this value in the WC application/questionnaire under the 'Applicant Name' field. The value was clearly labeled and matched the businessDescription requirement for a legal entity name. I searched the questionnaire first as indicated in whereToLook, and found an exact match."
     },
     {
       "fieldPath": "submission.submissionId",
@@ -666,7 +666,7 @@ Return a JSON object with this structure:
       "highlightedText": null,
       "chunkStartIndex": null,
       "chunkEndIndex": null,
-      "llmReasoning": "I searched through all provided documents (ACORD forms, email body, SOV) for any submission ID or reference number. I looked for patterns like 'Submission ID:', 'Ref:', 'Submission #', but found no such identifier. Based on the extractorLogic, this field should be programmatically generated, not extracted from documents, so null is the expected value here."
+      "llmReasoning": "I searched through all provided documents (questionnaire/application forms, email body, SOV) for any submission ID or reference number. I looked for patterns like 'Submission ID:', 'Ref:', 'Submission #', but found no such identifier. Based on the extractorLogic, this field should be programmatically generated, not extracted from documents, so null is the expected value here."
     }
   ]
 }
@@ -675,8 +675,8 @@ For each extracted field:
 - fieldPath: The JSON path (e.g., "submission.namedInsured", "locations[0].buildings[0].riskAddress")
 - fieldName: The field name without path
 - fieldValue: The extracted value (null if not found)
-- source: Must match one of the document section labels: "email_body", "acord", "sov", "loss_run", "schedule", "supplemental", or "other". 
-  Use the source that matches the document section where you found the value (e.g., if found in "=== ACORD DOCUMENTS (source: "acord") ===", use source: "acord").
+- source: Must match one of the document section labels: "email_body", "sov", "loss_run", "schedule", "supplemental", "payroll", "questionnaire", "application", or "other". 
+  Use the source that matches the document section where you found the value (e.g., if found in "=== payroll ===", use source: "payroll").
 - documentChunk: A 200-500 character excerpt from the source document containing the value. 
   Make sure to extract from the document section that matches the field's whereToLook instruction.
 - highlightedText: The same chunk with the extracted value wrapped in <mark> tags
@@ -700,7 +700,7 @@ For fields with null values, your llmReasoning MUST explain:
 4. Why you couldn't find it (what was missing, what you expected to see, any similar values you considered but rejected)
 
 Example for a null field:
-"llmReasoning": "I searched for a submission ID in the email body and all ACORD forms, looking for patterns like 'Submission ID:', 'Ref #', or 'Submission Number:'. I checked the email subject line and headers, and reviewed all document headers. No submission ID was found in any of the provided documents. Based on the extractorLogic, this field should be programmatically generated rather than extracted from documents."
+"llmReasoning": "I searched for a submission ID in the email body and all questionnaire/application forms, looking for patterns like 'Submission ID:', 'Ref #', or 'Submission Number:'. I checked the email subject line and headers, and reviewed all document headers. No submission ID was found in any of the provided documents. Based on the extractorLogic, this field should be programmatically generated rather than extracted from documents."
 
 DO NOT skip any fields. Every field in the schema must have a corresponding entry in fieldExtractions with reasoning.`;
 
@@ -912,7 +912,9 @@ DO NOT skip any fields. Every field in the schema must have a corresponding entr
 
     // Add parsed documents grouped by type - section name matches source value exactly
     const docTypes = [
-      'acord',
+      'payroll',
+      'questionnaire',
+      'application',
       'sov',
       'loss_run',
       'schedule',
@@ -923,7 +925,7 @@ DO NOT skip any fields. Every field in the schema must have a corresponding entr
     for (const docType of docTypes) {
       const text = parsedTexts.get(docType);
       if (text) {
-        // Section name is exactly the source value (e.g., "=== acord ===")
+        // Section name is exactly the source value (e.g., "=== payroll ===")
         // Increased limit from 50k to 200k chars per document type to preserve more context
         const maxChars = 200000;
         const truncated =
@@ -946,7 +948,7 @@ DO NOT skip any fields. Every field in the schema must have a corresponding entr
     prompt += `\nExtract all fields from the above content according to the schema. 
     
 IMPORTANT: The section name (between ===) is exactly the value you must use for "source" in your response.
-For example, if you find a value in the "=== acord ===" section, use source: "acord".
+For example, if you find a value in the "=== payroll ===" section, use source: "payroll".
 If you find a value in the "=== email_body ===" section, use source: "email_body".`;
 
     return prompt;
@@ -1286,7 +1288,7 @@ Field Name: ${schemaField.name}`;
    - Search thoroughly in these sections first
 2. IF NOT FOUND: Then search ALL other available document sections
    - Don't give up after checking "Where to Look" sections
-   - Continue searching in all other document types (acord, sov, loss_run, schedule, supplemental, email_body, other)
+   - Continue searching in all other document types (sov, loss_run, schedule, supplemental, payroll, questionnaire, application, email_body, other)
    - The value might be in an unexpected location
 
 Return a JSON object with:
@@ -1368,7 +1370,7 @@ Be thorough and check ALL available document sections before returning null.`;
 2. Where you searched:
    - FIRST: Which documents you checked from "Where to Look" (if provided)
    - THEN: Which other documents you checked if not found in the prioritized documents
-   - List ALL document sections you searched (acord, sov, loss_run, schedule, supplemental, email_body, other)
+   - List ALL document sections you searched (sov, loss_run, schedule, supplemental, payroll, questionnaire, application, email_body, other)
 3. What patterns or keywords you looked for
 4. For extracted fields: Why you chose this specific value, which document section you found it in, and whether it was in the "Where to Look" section or elsewhere
 5. For null fields: Why you couldn't find a value after searching all document sections (what was missing, what you expected to see)
@@ -1466,7 +1468,9 @@ FIELDS TO EXPLAIN:\n${fieldDefs.join('\n')}\n\n`;
     prompt += `${emailData.body || 'No email body'}\n\n`;
 
     const docTypes = [
-      'acord',
+      'payroll',
+      'questionnaire',
+      'application',
       'sov',
       'loss_run',
       'schedule',
@@ -1491,16 +1495,16 @@ FIELDS TO EXPLAIN:\n${fieldDefs.join('\n')}\n\n`;
 For EXTRACTED fields, explain what you found and why:
 Example:
 {
-  "submission.namedInsured": "I first searched the ACORD forms and email body as indicated in whereToLook. I found 'Greenway Plaza, LLC' in the ACORD 125 form under the 'Named Insured' field (found in prioritized section). The value was clearly labeled and matched the businessDescription requirement for a legal entity name. I also verified this name appears in the loss runs.",
+  "submission.namedInsured": "I first searched the questionnaire/application forms and email body as indicated in whereToLook. I found 'Greenway Plaza, LLC' in the WC application form under the 'Applicant Name' field (found in prioritized section). The value was clearly labeled and matched the businessDescription requirement for a legal entity name. I also verified this name appears in the loss runs.",
   "locations[0].buildings[0].riskAddress": "I first searched the SOV document as indicated in whereToLook. I found the address in the SOV row: '2100 Greenway Plaza Drive, Austin, TX 78759' (found in prioritized section). I concatenated the Address, City, State, and Zip columns to form the complete address.",
-  "submission.brokerEmail": "I first checked email headers as indicated in whereToLook, but didn't find a broker email there. I then searched all other document sections (email body, ACORD, SOV, loss runs) and found the email 'jordan.lee@example.com' in the email body signature section (found in secondary search)."
+  "submission.brokerEmail": "I first checked email headers as indicated in whereToLook, but didn't find a broker email there. I then searched all other document sections (email body, questionnaire, application, SOV, loss runs) and found the email 'jordan.lee@example.com' in the email body signature section (found in secondary search)."
 }
 
 For NULL fields, explain what you searched for and why you couldn't find it:
 Example:
 {
-  "submission.carrierName": "I first searched the email body, email signature, and ACORD headers as indicated in whereToLook. I looked for patterns like 'Carrier:', 'Insurance Company:', or company names in headers. I then searched all other document sections (SOV, loss runs, schedule, supplemental). I found 'Central States Property Insurance Co.' in the loss runs, but that appears to be the prior carrier, not the target market carrier. After searching all available documents, no target carrier name was found.",
-  "submission.brokerPhone": "I first searched the email signature and body as indicated in whereToLook for phone number patterns like (XXX) XXX-XXXX, XXX-XXX-XXXX, or XXX.XXX.XXXX. I then searched all other document sections (ACORD, SOV, loss runs, schedule, supplemental). After checking all available documents, no phone number matching these patterns was found."
+  "submission.carrierName": "I first searched the email body, email signature, and questionnaire/application headers as indicated in whereToLook. I looked for patterns like 'Carrier:', 'Insurance Company:', or company names in headers. I then searched all other document sections (SOV, loss runs, schedule, supplemental). I found 'Central States Property Insurance Co.' in the loss runs, but that appears to be the prior carrier, not the target market carrier. After searching all available documents, no target carrier name was found.",
+  "submission.brokerPhone": "I first searched the email signature and body as indicated in whereToLook for phone number patterns like (XXX) XXX-XXXX, XXX-XXX-XXXX, or XXX.XXX.XXXX. I then searched all other document sections (questionnaire, application, SOV, loss runs, schedule, supplemental). After checking all available documents, no phone number matching these patterns was found."
 }`;
 
     return prompt;

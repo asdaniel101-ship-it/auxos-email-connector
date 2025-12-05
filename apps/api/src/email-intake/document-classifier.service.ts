@@ -12,12 +12,12 @@ export class DocumentClassifierService {
   ): Promise<
     Map<
       string,
-      'acord' | 'sov' | 'loss_run' | 'schedule' | 'supplemental' | 'other'
+      'sov' | 'loss_run' | 'schedule' | 'supplemental' | 'payroll' | 'questionnaire' | 'application' | 'other'
     >
   > {
     const classifications = new Map<
       string,
-      'acord' | 'sov' | 'loss_run' | 'schedule' | 'supplemental' | 'other'
+      'sov' | 'loss_run' | 'schedule' | 'supplemental' | 'payroll' | 'questionnaire' | 'application' | 'other'
     >();
 
     for (const attachment of attachments) {
@@ -34,18 +34,33 @@ export class DocumentClassifierService {
   async classify(
     attachment: any,
   ): Promise<
-    'acord' | 'sov' | 'loss_run' | 'schedule' | 'supplemental' | 'other'
+    'sov' | 'loss_run' | 'schedule' | 'supplemental' | 'payroll' | 'questionnaire' | 'application' | 'other'
   > {
     const filename = attachment.filename.toLowerCase();
     const contentType = attachment.contentType?.toLowerCase() || '';
 
-    // ACORD detection
+    // Payroll detection
     if (
-      filename.includes('acord') ||
-      filename.includes('acord 140') ||
-      filename.includes('acord140')
+      filename.includes('payroll') ||
+      filename.includes('payroll schedule') ||
+      filename.includes('payroll_by_class') ||
+      filename.includes('payroll_report')
     ) {
-      return 'acord';
+      return 'payroll';
+    }
+
+    // Questionnaire/Application detection
+    if (
+      filename.includes('questionnaire') ||
+      filename.includes('application') ||
+      filename.includes('wc application') ||
+      filename.includes('workers comp application') ||
+      filename.includes('wc questionnaire')
+    ) {
+      if (filename.includes('questionnaire')) {
+        return 'questionnaire';
+      }
+      return 'application';
     }
 
     // SOV detection

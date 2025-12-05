@@ -44,6 +44,14 @@ export class UpdateFieldDefinitionDto {
   whereToLook?: string | null;
 
   @IsOptional()
+  @IsString()
+  inAcord130?: string | null;
+
+  @IsOptional()
+  @IsString()
+  whereInAcord130?: string | null;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   documentSources?: string[];

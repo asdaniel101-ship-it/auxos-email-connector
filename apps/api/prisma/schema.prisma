@@ -27,6 +27,8 @@ model FieldDefinition {
   businessDescription String?        @db.Text
   extractorLogic      String?        @db.Text
   whereToLook         String?        @db.Text
+  inAcord130          String?         // "Yes" or "No" - indicates if field is filled in ACORD 130
+  whereInAcord130     String?         @db.Text // Fixed description of where in ACORD 130 this field is located
   documentSources     String[]       @default([])
   alternateFieldNames String[]       @default([])
   createdAt           DateTime       @default(now())
@@ -51,11 +53,13 @@ enum SubmissionType {
 
 enum DocumentType {
   email_body
-  acord
   sov
   loss_run
   schedule
   supplemental
+  payroll
+  questionnaire
+  application
   other
 }
 
@@ -130,7 +134,7 @@ model FieldExtraction {
   fieldPath         String            // e.g., "submission.namedInsured", "locations[0].buildings[0].riskAddress"
   fieldName         String            // e.g., "namedInsured", "riskAddress"
   fieldValue        String?           @db.Text // Extracted value (null if not found)
-  source            String            // "email_body" | "acord" | "sov" | "loss_run" | "schedule" | "supplemental" | "other"
+  source            String            // "email_body" | "sov" | "loss_run" | "schedule" | "supplemental" | "payroll" | "questionnaire" | "application" | "other"
   documentId        String?           // ID of the document this came from (if from attachment)
   documentChunk     String?           @db.Text // The actual text chunk from the document
   highlightedText   String?           @db.Text // The chunk with the extracted value highlighted (e.g., with <mark> tags)
