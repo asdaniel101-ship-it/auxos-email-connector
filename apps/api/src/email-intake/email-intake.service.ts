@@ -181,6 +181,7 @@ export class EmailIntakeService {
       const packagedResponse = await this.responsePackager.package(
         extractionResult,
         qaFlags,
+        emailData.attachments || [],
       );
 
       // 8. Store extraction result and field extractions (use upsert for reprocessing)
