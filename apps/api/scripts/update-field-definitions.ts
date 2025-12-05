@@ -1154,6 +1154,37 @@ const fieldUpdates = [
     inAcord130: 'Yes',
     whereInAcord130: 'Page 1 officer table, RENUMERATION column.',
   },
+  // I. PREMIUM SUMMARY (Optional for v1 MCP)
+  {
+    fieldName: 'totalEstimatedAnnualPremiumAllStates',
+    category: 'Premium Summary',
+    fieldType: 'number' as FieldValueType,
+    businessDescription: 'The sum of estimated annual manual premiums across all states and class codes before adjustments (mods, schedule credits, taxes). Often corresponds to the "Manual Premium" subtotal on a carrier\'s pre-bind quote.',
+    extractorLogic: 'Autos should populate this using one of three methods, in this order: 1) If broker provides a summary quote sheet (PDF/Excel): Look for fields labeled "Total Estimated Premium", "Estimated Annual Manual Premium", "Total Manual Premium". Extract exactly as provided. 2) Else if payroll spreadsheet includes a "Premium" column per row: Sum all values. 3) Else compute from rate × payroll (allowed because this is math, not inference): totalEstimatedAnnualPremiumAllStates = Σ (estimatedAnnualPayroll / 100 * rate). Only compute when BOTH payroll and rate are provided. If insufficient data, leave null.',
+    whereToLook: 'Carrier or broker preliminary quote, Payroll spreadsheet (may have premium column), Submission email ("premium last year was $X; expecting similar this year").',
+    inAcord130: 'No',
+    whereInAcord130: 'Would appear only in carrier-generated quote or ACORD 101 remarks. (ACORD only holds per-row premium on the State Rating Worksheet.)',
+  },
+  {
+    fieldName: 'totalMinimumPremiumAllStates',
+    category: 'Premium Summary',
+    fieldType: 'number' as FieldValueType,
+    businessDescription: 'Some carriers apply a minimum premium per state or per policy. This is the sum of all minimum premiums required across all states.',
+    extractorLogic: 'Detect if broker attaches a quote with a line like: "Minimum Premium: $25,000", "State minimum premium: WA $1,500; OR $1,000". Sum per-state minimums if listed individually. If no minimum premium referenced anywhere, leave null — do NOT assume.',
+    whereToLook: 'Carrier quote PDFs, Renewal summaries listing "Minimum Earned Premium", Submission email.',
+    inAcord130: 'No',
+    whereInAcord130: 'No explicit field, but carriers list minimum premiums in binders/quotes. ACORD 101 or carrier quote pages.',
+  },
+  {
+    fieldName: 'totalDepositPremiumAllStates',
+    category: 'Premium Summary',
+    fieldType: 'number' as FieldValueType,
+    businessDescription: 'The deposit premium the insured must pay at policy inception — usually the estimated annual premium times a deposit percentage or the full annual premium if pay-in-full.',
+    extractorLogic: 'Extract from quote: "Deposit Premium Due at Binding: $X", "Initial Deposit: 25% of annual premium = $Y". If not explicitly listed but the submission email states deposit terms ("20% deposit required"), Autos may compute: deposit = totalEstimatedAnnualPremiumAllStates * depositPercentage. Only compute if both deposit percentage and estimated premium are present. If unknown, leave null.',
+    whereToLook: 'Carrier quote, Submission email.',
+    inAcord130: 'No',
+    whereInAcord130: 'No (ACORD does not include deposit premium). Carrier quote documents.',
+  },
 ];
 
 async function main() {
