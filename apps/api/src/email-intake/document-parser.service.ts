@@ -39,6 +39,14 @@ export class DocumentParserService {
       }
       const buffer = Buffer.concat(chunks);
 
+      // Validate buffer
+      if (!buffer || buffer.length === 0) {
+        throw new Error(`Empty or invalid buffer for ${attachment.filename}`);
+      }
+      this.logger.debug(
+        `Retrieved buffer for ${attachment.filename}: ${buffer.length} bytes`,
+      );
+
       // Parse based on content type
       const contentType = attachment.contentType?.toLowerCase() || '';
 
@@ -317,6 +325,20 @@ export class DocumentParserService {
    * Parse Word document and extract text with improved formatting
    */
   private async parseWord(buffer: Buffer): Promise<string> {
+    // Validate buffer before parsing
+    if (!buffer || buffer.length === 0) {
+      throw new Error('Empty buffer provided for Word document parsing');
+    }
+
+    // Check if buffer looks like a valid zip file (docx is a zip archive)
+    // ZIP files start with "PK" (PKZIP signature)
+    if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
+      this.logger.warn(
+        `Buffer does not appear to be a valid zip file (docx). First bytes: ${buffer.slice(0, 4).toString('hex')}`,
+      );
+      // Try to parse anyway, but log the warning
+    }
+
     try {
       // Extract raw text
       const result = await mammoth.extractRawText({ buffer });
@@ -356,6 +378,39 @@ export class DocumentParserService {
       return this.enhanceWordText(text);
     } catch (error) {
       this.logger.error('Error parsing Word document:', error);
+      
+      // If mammoth fails due to zip corruption, try to extract any readable text
+      if (
+        error instanceof Error &&
+        (error.message.includes('zip') ||
+          error.message.includes('central directory') ||
+          error.message.includes('JSZip'))
+      ) {
+        this.logger.warn(
+          'Word document appears corrupted (zip error). Attempting fallback text extraction...',
+        );
+        
+        // Try to extract text by treating it as a binary file and looking for readable strings
+        try {
+          const textFromBuffer = buffer.toString('utf-8', 0, Math.min(buffer.length, 100000));
+          // Extract XML-like content (docx files contain XML)
+          const xmlMatches = textFromBuffer.match(/<[^>]+>[^<]*<\/[^>]+>/g);
+          if (xmlMatches && xmlMatches.length > 0) {
+            const extractedText = xmlMatches
+              .join(' ')
+              .replace(/<[^>]+>/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+            if (extractedText.length > 50) {
+              this.logger.log('Successfully extracted text from corrupted Word document using fallback method');
+              return this.enhanceWordText(extractedText);
+            }
+          }
+        } catch (fallbackError) {
+          this.logger.error('Fallback text extraction also failed:', fallbackError);
+        }
+      }
+      
       throw error;
     }
   }
