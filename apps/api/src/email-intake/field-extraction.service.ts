@@ -298,7 +298,7 @@ export class FieldExtractionService implements OnModuleInit {
           try {
             const fieldResult = await this.extractSingleField(
               schemaField,
-              emailData,
+        emailData, 
               documentClassifications,
               parsedTexts,
             );
@@ -354,7 +354,7 @@ export class FieldExtractionService implements OnModuleInit {
                 `${batchResult.field.path}: ${batchResult.result.llmResponse}`,
               );
             }
-          } else {
+        } else {
             // Add null extraction for failed fields
             fieldExtractions.push({
               fieldPath: batchResult.field.path,
@@ -419,7 +419,7 @@ export class FieldExtractionService implements OnModuleInit {
       };
     } catch (error: any) {
       this.logger.error('Error in field extraction:', error);
-
+      
       // Handle OpenAI API errors gracefully
       if (
         error?.status === 429 ||
@@ -435,13 +435,13 @@ export class FieldExtractionService implements OnModuleInit {
           parsedTexts,
         );
       }
-
+      
       if (error?.status === 401 || error?.message?.includes('401')) {
         throw new Error(
           'OpenAI API key is invalid. Please check your OPENAI_API_KEY environment variable.',
         );
       }
-
+      
       // For other errors, try fallback before throwing
       this.logger.warn('OpenAI API error, attempting fallback extraction');
       try {
@@ -921,7 +921,7 @@ DO NOT skip any fields. Every field in the schema must have a corresponding entr
       'supplemental',
       'other',
     ];
-
+    
     for (const docType of docTypes) {
       const text = parsedTexts.get(docType);
       if (text) {
@@ -1218,15 +1218,70 @@ If you find a value in the "=== email_body ===" section, use source: "email_body
           );
         }
 
+        // Expand the LLM's documentChunk to include 200 chars before and after
+        let expandedChunk: string | undefined = responseData.documentChunk;
+        let expandedHighlighted: string | undefined = undefined;
+        let chunkStartIndex: number | undefined = undefined;
+        let chunkEndIndex: number | undefined = undefined;
+
+        if (responseData.documentChunk && responseData.source && hasValue) {
+          // Find the source document text
+          const sourceDocType = responseData.source;
+          const sourceText = parsedTexts.get(sourceDocType) || 
+                            (sourceDocType === 'email_body' ? emailData.body : null);
+
+          if (sourceText) {
+            // Try to find the value in the source text to get its position
+            const valueStr = String(fieldValue);
+            const textLower = sourceText.toLowerCase();
+            const valueLower = valueStr.toLowerCase();
+            let valueIndex = textLower.indexOf(valueLower);
+
+            // If exact match not found, try to find the chunk in the text
+            if (valueIndex === -1) {
+              const chunkLower = responseData.documentChunk.toLowerCase();
+              const chunkIndex = textLower.indexOf(chunkLower);
+              if (chunkIndex !== -1) {
+                // Find the value within the chunk
+                const valueInChunkIndex = chunkLower.indexOf(valueLower);
+                if (valueInChunkIndex !== -1) {
+                  valueIndex = chunkIndex + valueInChunkIndex;
+                } else {
+                  // Use the start of the chunk as the value position
+                  valueIndex = chunkIndex;
+                }
+              }
+            }
+
+            // If we found the value position, expand the chunk
+            if (valueIndex !== -1) {
+              const expanded = this.extractChunk(
+                sourceText,
+                valueIndex,
+                valueStr.length,
+              );
+              expandedChunk = expanded.text;
+              expandedHighlighted = expanded.highlighted;
+              chunkStartIndex = expanded.startIndex;
+              chunkEndIndex = expanded.endIndex;
+            }
+          }
+        }
+
         return {
           fieldPath: schemaField.path,
           fieldName: schemaField.name,
           fieldValue: fieldValue,
           source: responseData.source || 'other',
-          documentChunk: responseData.documentChunk || undefined,
-          highlightedText: responseData.documentChunk
-            ? `<mark>${responseData.fieldValue}</mark>`
-            : undefined,
+          documentChunk: expandedChunk,
+          highlightedText: expandedHighlighted || (responseData.documentChunk && hasValue
+            ? responseData.documentChunk.replace(
+                new RegExp(this.escapeRegex(String(fieldValue)), 'gi'),
+                (match) => `<mark>${match}</mark>`,
+              )
+            : undefined),
+          chunkStartIndex,
+          chunkEndIndex,
           llmReasoning: responseData.llmReasoning || undefined,
           llmResponse: responseContent,
         };
@@ -1521,15 +1576,15 @@ Example:
     documentClassifications: Map<string, string>,
   ): Promise<
     Array<{
-      fieldPath: string;
-      fieldName: string;
-      fieldValue: any;
-      source: string;
-      documentId?: string;
-      documentChunk?: string;
-      highlightedText?: string;
-      chunkStartIndex?: number;
-      chunkEndIndex?: number;
+    fieldPath: string;
+    fieldName: string;
+    fieldValue: any;
+    source: string;
+    documentId?: string;
+    documentChunk?: string;
+    highlightedText?: string;
+    chunkStartIndex?: number;
+    chunkEndIndex?: number;
       llmReasoning?: string;
     }>
   > {
@@ -1556,11 +1611,11 @@ Example:
       path = '',
     ): Array<{ path: string; name: string; value: any }> => {
       const fields: Array<{ path: string; name: string; value: any }> = [];
-
+      
       for (const key in obj) {
         const currentPath = path ? `${path}.${key}` : key;
         const value = obj[key];
-
+        
         if (value === null || value === undefined) {
           fields.push({ path: currentPath, name: key, value: null });
         } else if (Array.isArray(value)) {
@@ -1587,7 +1642,7 @@ Example:
           fields.push({ path: currentPath, name: key, value });
         }
       }
-
+      
       return fields;
     };
 
@@ -1667,7 +1722,7 @@ Example:
       if (emailData.body) {
         const bodyLower = emailData.body.toLowerCase();
         let index = bodyLower.indexOf(searchValue);
-
+        
         // If exact match not found, try normalized search
         if (index === -1 && normalizedValue) {
           const bodyNormalized = bodyLower.replace(/[,$%]/g, '');
@@ -1681,7 +1736,7 @@ Example:
             );
           }
         }
-
+        
         // If still not found, try searching for field name near the value
         if (index === -1) {
           const fieldNamePattern = new RegExp(
@@ -1696,7 +1751,7 @@ Example:
             index = fieldNameMatch.index;
           }
         }
-
+        
         if (index !== -1) {
           const chunk = this.extractChunk(
             emailData.body,
@@ -1716,7 +1771,7 @@ Example:
         ] of attachmentTextMap.entries()) {
           const textLower = text.toLowerCase();
           let index = textLower.indexOf(searchValue);
-
+          
           // If exact match not found, try normalized search
           if (index === -1 && normalizedValue) {
             const textNormalized = textLower.replace(/[,$%]/g, '');
@@ -1729,7 +1784,7 @@ Example:
               );
             }
           }
-
+          
           // If still not found, try searching for field name
           if (index === -1) {
             const fieldNamePattern = new RegExp(
@@ -1743,7 +1798,7 @@ Example:
               index = fieldNameMatch.index;
             }
           }
-
+          
           if (index !== -1) {
             const chunk = this.extractChunk(
               text,
@@ -1780,7 +1835,7 @@ Example:
           const bodyLower = emailData.body.toLowerCase();
           const valueLower = valueStr.toLowerCase();
           let valueIndex = bodyLower.indexOf(valueLower);
-
+          
           // If value not found, try normalized search
           if (valueIndex === -1 && valueStr) {
             const normalizedValue = valueLower.replace(/[,$%]/g, '').trim();
@@ -1796,7 +1851,7 @@ Example:
               }
             }
           }
-
+          
           // If value found, extract chunk around it
           if (valueIndex !== -1) {
             defaultChunk = this.extractChunk(
@@ -1825,7 +1880,7 @@ Example:
             }
           }
         }
-
+        
         const extractionRecord: {
           fieldPath: string;
           fieldName: string;
@@ -1841,7 +1896,7 @@ Example:
           fieldValue: field.value,
           source: 'email_body', // Default
         };
-
+        
         // Always include chunk if email body exists
         if (defaultChunk) {
           extractionRecord.documentChunk = defaultChunk.text;
@@ -1869,7 +1924,7 @@ Example:
           extractionRecord.chunkStartIndex = minimalChunk.startIndex;
           extractionRecord.chunkEndIndex = minimalChunk.endIndex;
         }
-
+        
         fieldExtractions.push(extractionRecord);
       }
     }
@@ -1896,7 +1951,7 @@ Example:
       fullText.length,
       valueIndex + valueLength + contextSize,
     );
-
+    
     const chunk = fullText.substring(startIndex, endIndex);
     const valueInChunk = fullText.substring(
       valueIndex,
@@ -1961,7 +2016,7 @@ Example:
     llmResponse?: string | null;
   }> {
     this.logger.log('Using fallback extraction (no LLM)');
-
+    
     const extracted: any = {
       submission: {},
       locations: [],
@@ -1999,11 +2054,11 @@ Example:
     if (sqftMatch) {
       extracted.locations = [
         {
-          locationNumber: 1,
+        locationNumber: 1,
           buildings: [
             {
-              buildingNumber: 1,
-              buildingSqFt: parseInt(sqftMatch[1].replace(/,/g, ''), 10),
+          buildingNumber: 1,
+          buildingSqFt: parseInt(sqftMatch[1].replace(/,/g, ''), 10),
             },
           ],
         },
