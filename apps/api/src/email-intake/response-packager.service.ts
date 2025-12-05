@@ -27,6 +27,7 @@ export class ResponsePackagerService {
   async package(
     extractionResult: any,
     qaFlags: any,
+    attachments?: any[],
   ): Promise<{
     summary: string;
     table: string;
@@ -34,7 +35,7 @@ export class ResponsePackagerService {
     json: any;
   }> {
     // Generate summary paragraph
-    const summary = await this.generateSummary(extractionResult.data);
+    const summary = await this.generateSummary(extractionResult.data, attachments);
 
     // Generate human-readable table
     const table = this.generateTable(extractionResult.data);
@@ -53,9 +54,9 @@ export class ResponsePackagerService {
   /**
    * Generate summary paragraph using LLM
    */
-  private async generateSummary(data: any): Promise<string> {
+  private async generateSummary(data: any, attachments?: any[]): Promise<string> {
     if (!this.openai) {
-      return this.generateSummaryFallback(data);
+      return this.generateSummaryFallback(data, attachments);
     }
 
     try {
@@ -65,11 +66,22 @@ export class ResponsePackagerService {
           {
             role: 'system',
             content:
-              'You are a professional insurance underwriter assistant. Write concise, clear summaries of commercial property submissions.',
+              'You are a professional insurance underwriter assistant. Write concise, clear summaries of workers compensation insurance submissions.',
           },
           {
             role: 'user',
-            content: `Write a 3-4 sentence plain English summary of this commercial property submission for an underwriter. Mention named insured, line of business, number of locations/buildings, total building limit, notable protections (sprinklers/alarms), and any major losses.
+            content: `Write a comprehensive 1-2 sentence plain English summary of this workers compensation submission for an underwriter. Include:
+- Company name (applicantName) and state/location
+- Business type/operations description
+- Years in business
+- Requested effective date and billing/payment plan (if available)
+- Primary class code and total payroll
+- Prior carrier name and experience mod (if available)
+- Number of prior claims and total incurred (if available)
+- Key operations details (out-of-state exposure, safety program, etc.)
+- Attachments included (loss runs, payroll, application, etc.)
+
+Format like: "[Company] is a [State]-based [business type] with [X] years in business, requesting a [date] workers comp quote ([billing plan]). Primary class is [code] with $[X]M payroll. Prior carrier was [name] with a [X.XX] mod and [X] claims totaling $[X]K incurred. Operations include [description], [key details]. [Attachments] are attached."
 
 Data: ${JSON.stringify(data, null, 2)}`,
           },
@@ -79,7 +91,7 @@ Data: ${JSON.stringify(data, null, 2)}`,
 
       return (
         response.choices[0].message.content ||
-        this.generateSummaryFallback(data)
+        this.generateSummaryFallback(data, attachments)
       );
     } catch (error: any) {
       // Handle OpenAI API errors gracefully - use fallback
@@ -89,37 +101,144 @@ Data: ${JSON.stringify(data, null, 2)}`,
         error?.message?.includes('429')
       ) {
         this.logger.warn('OpenAI API quota exceeded, using fallback summary');
-        return this.generateSummaryFallback(data);
+        return this.generateSummaryFallback(data, attachments);
       }
 
       this.logger.error('Error generating summary:', error);
-      return this.generateSummaryFallback(data);
+      return this.generateSummaryFallback(data, attachments);
     }
   }
 
   /**
-   * Fallback summary generation
+   * Fallback summary generation for Workers Comp
    */
-  private generateSummaryFallback(data: any): string {
-    const namedInsured = data.namedInsured || 'Unknown';
-    const locations = data.locations?.length || 0;
-    const buildings =
-      data.locations?.reduce(
-        (sum: number, loc: any) => sum + (loc.buildings?.length || 0),
-        0,
-      ) || 0;
-    const totalLimit =
-      data.locations?.reduce((sum: number, loc: any) => {
-        return (
-          sum +
-          (loc.buildings?.reduce(
-            (bSum: number, b: any) => bSum + (b.buildingLimit || 0),
-            0,
-          ) || 0)
-        );
-      }, 0) || 0;
-
-    return `Commercial property submission for ${namedInsured}. ${locations} location(s) with ${buildings} building(s). Total building limit: $${totalLimit.toLocaleString()}.`;
+  private generateSummaryFallback(data: any, attachments?: any[]): string {
+    const applicantName = data.submission?.applicantName || 'Unknown';
+    const state = data.locations?.[0]?.locationState || 
+                  data.businessEntity?.operationsDescription?.match(/\b([A-Z]{2})\b/)?.[1] || 
+                  '';
+    const yearsInBusiness = data.submission?.yearsInBusiness;
+    const effectiveDate = data.submission?.effectiveDate ? 
+      new Date(data.submission.effectiveDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }) : 
+      null;
+    const billingPlan = data.submission?.billingPlan || '';
+    const paymentPlan = data.submission?.paymentPlan || '';
+    
+    // Get primary class code and payroll
+    const classifications = data.classification || [];
+    const primaryClass = classifications[0];
+    const primaryClassCode = primaryClass?.classCode || '';
+    const primaryPayroll = primaryClass?.estimatedAnnualPayroll || 0;
+    const payrollInMillions = primaryPayroll >= 1000000 ? 
+      (primaryPayroll / 1000000).toFixed(1) : 
+      (primaryPayroll / 1000).toFixed(0) + 'K';
+    
+    // Get operations description
+    const operations = data.businessEntity?.operationsDescription || '';
+    const businessType = operations ? 
+      operations.split(/[.,;]/)[0].trim().toLowerCase() || 'business' : 
+      'business';
+    
+    // Get prior carrier info
+    const priorCarrier = data.priorCarrier?.priorCarrierName || '';
+    const priorMod = data.priorCarrier?.priorExperienceMod;
+    const priorClaims = data.priorCarrier?.priorNumberOfClaims || 
+                       data.lossHistory?.numberOfClaims || 0;
+    const priorIncurred = data.priorCarrier?.priorAmountPaid || 
+                         data.lossHistory?.totalIncurredLoss || 0;
+    const priorIncurredFormatted = priorIncurred >= 1000 ? 
+      (priorIncurred / 1000).toFixed(1) + 'K' : 
+      priorIncurred.toFixed(0);
+    
+    // Get additional class codes
+    const additionalClasses: string[] = [];
+    if (classifications.length > 1) {
+      for (let i = 1; i < Math.min(classifications.length, 3); i++) {
+        const cls = classifications[i];
+        if (cls?.classCode && cls?.estimatedAnnualPayroll) {
+          const payroll = cls.estimatedAnnualPayroll >= 1000 ? 
+            (cls.estimatedAnnualPayroll / 1000).toFixed(0) + 'K' : 
+            cls.estimatedAnnualPayroll.toFixed(0);
+          additionalClasses.push(`${cls.classCode} adds $${payroll}`);
+        }
+      }
+    }
+    
+    // Get key operations details
+    const operationsDetails: string[] = [];
+    if (data.businessEntity?.employeesTravelOutOfState) {
+      const states = data.locations?.map((loc: any) => loc.locationState).filter(Boolean).join('/') || '';
+      if (states) {
+        operationsDetails.push(`limited out-of-state exposure (${states})`);
+      }
+    }
+    if (data.businessEntity?.safetyProgramInOperation) {
+      operationsDetails.push('a formal safety program');
+    }
+    
+    // Get attachments list
+    const attachmentTypes: string[] = [];
+    if (attachments) {
+      const docTypes = new Set(attachments.map((att: any) => att.documentType).filter(Boolean));
+      if (docTypes.has('loss_run')) attachmentTypes.push('loss runs');
+      if (docTypes.has('payroll')) attachmentTypes.push('payroll schedule');
+      if (docTypes.has('schedule')) attachmentTypes.push('officer schedule');
+      if (docTypes.has('application')) attachmentTypes.push('application');
+      if (docTypes.has('questionnaire')) attachmentTypes.push('questionnaire');
+      if (docTypes.has('supplemental')) attachmentTypes.push('supplemental docs');
+    }
+    const attachmentsText = attachmentTypes.length > 0 ? 
+      attachmentTypes.join(', ') + ' are attached' : 
+      'supporting documents are attached';
+    
+    // Build summary
+    let summary = `${applicantName}`;
+    if (state) {
+      summary += ` is a ${state}-based`;
+    }
+    summary += ` ${businessType}`;
+    if (yearsInBusiness) {
+      summary += ` with ${yearsInBusiness} years in business`;
+    }
+    if (effectiveDate) {
+      summary += `, requesting a ${effectiveDate} workers comp quote`;
+      if (billingPlan || paymentPlan) {
+        const plan = billingPlan || paymentPlan;
+        summary += ` (${plan.toLowerCase()})`;
+      }
+    }
+    summary += '.';
+    
+    if (primaryClassCode && primaryPayroll) {
+      summary += ` Primary class is ${primaryClassCode} with $${payrollInMillions}M payroll`;
+      if (additionalClasses.length > 0) {
+        summary += `; ${additionalClasses.join('; ')}`;
+      }
+      summary += '.';
+    }
+    
+    if (priorCarrier) {
+      summary += ` Prior carrier was ${priorCarrier}`;
+      if (priorMod !== null && priorMod !== undefined) {
+        summary += ` with a ${priorMod.toFixed(2)} mod`;
+      }
+      if (priorClaims > 0) {
+        summary += ` and ${priorClaims} claim${priorClaims > 1 ? 's' : ''} totaling $${priorIncurredFormatted} incurred`;
+      }
+      summary += '.';
+    }
+    
+    if (operations) {
+      summary += ` Operations include ${operations.split(/[.,;]/)[0].trim().toLowerCase()}`;
+      if (operationsDetails.length > 0) {
+        summary += `, ${operationsDetails.join(', ')}`;
+      }
+      summary += '.';
+    }
+    
+    summary += ` ${attachmentsText.charAt(0).toUpperCase() + attachmentsText.slice(1)}.`;
+    
+    return summary;
   }
 
   /**

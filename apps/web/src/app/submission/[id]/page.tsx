@@ -200,7 +200,7 @@ function SubmissionPageContent() {
             <div className="text-sm font-semibold text-slate-700 mb-1">{fieldName}</div>
             <div
               className={`text-base font-medium ${
-                hasValue ? 'text-green-900' : 'text-slate-500 italic'
+                hasValue ? 'text-slate-900' : 'text-slate-500 italic'
               }`}
             >
               {displayValue}
