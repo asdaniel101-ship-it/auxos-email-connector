@@ -1930,6 +1930,21 @@ The Auxo processor
     );
     html += '</table></div>';
 
+    // Premium Summary
+    html += '<div class="section">';
+    html += '<div class="section-header">Premium Summary</div>';
+    html += '<table class="details-table">';
+    html += this.renderSectionForEmail(
+      'premiumSummary',
+      data?.premiumSummary || {},
+      fieldExtractions,
+      'premiumSummary',
+      emailMessageId,
+      frontendUrl,
+      expectedFieldsSchema,
+    );
+    html += '</table></div>';
+
     return html;
   }
 
