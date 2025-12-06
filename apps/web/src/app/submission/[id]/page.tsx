@@ -767,7 +767,7 @@ function SubmissionPageContent() {
                 )}
                 {renderLossHistoryTable(
                   submission.extractionResult?.data?.lossHistory || [],
-                  submission.extractionResult?.data?.priorCarrier || {},
+                  (submission.extractionResult?.data?.priorCarrier || {}) as Record<string, unknown>,
                   fieldExtractions,
                 )}
               </div>
