@@ -380,6 +380,7 @@ function SubmissionPageContent() {
                       const fieldPath = `lossHistory[${index}].${field.key}`;
                       const extraction = getFieldExtraction(fieldPath);
                       const isExtracted = extraction && extraction.fieldValue !== null && extraction.fieldValue !== undefined;
+                      const isClickable = extraction && extraction.documentChunk;
 
                       let displayValue: string;
                       if (field.key.includes('Paid') || field.key.includes('Reserve') || field.key.includes('Incurred')) {
@@ -395,8 +396,17 @@ function SubmissionPageContent() {
                       return (
                         <td
                           key={field.key}
+                          onClick={() => {
+                            if (isClickable && extraction) {
+                              setSelectedField(extraction);
+                            }
+                          }}
                           className={`px-4 py-3 text-sm border-b border-slate-200 ${
                             isExtracted ? 'text-slate-900 font-medium' : 'text-slate-600'
+                          } ${
+                            isClickable
+                              ? 'cursor-pointer hover:bg-blue-50 transition-colors'
+                              : ''
                           }`}
                         >
                           {displayValue}
