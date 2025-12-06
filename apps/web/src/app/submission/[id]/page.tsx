@@ -65,6 +65,7 @@ function SubmissionPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedField, setSelectedField] = useState<FieldExtraction | null>(null);
+  const [showBindabilityDetails, setShowBindabilityDetails] = useState(false);
   const [expectedSchema, setExpectedSchema] = useState<Record<string, unknown> | null>(null);
 
   const loadSubmission = useCallback(async () => {
@@ -166,6 +167,241 @@ function SubmissionPageContent() {
       return value ? 'Yes' : 'No';
     }
     return String(value);
+  };
+
+  // Bindability Index Calculation
+  interface BindabilityCalculation {
+    score: number;
+    documentationPenalty: number;
+    lossHistoryPenalty: number;
+    exposurePenalty: number;
+    dataQualityPenalty: number;
+    breakdown: {
+      documentation: Array<{ reason: string; penalty: number }>;
+      lossHistory: Array<{ reason: string; penalty: number }>;
+      exposure: Array<{ reason: string; penalty: number }>;
+      dataQuality: Array<{ reason: string; penalty: number }>;
+    };
+    keyDrivers: Array<{ type: 'positive' | 'warning' | 'negative'; text: string }>;
+  }
+
+  const calculateBindabilityIndex = (data: Record<string, unknown>): BindabilityCalculation => {
+    const breakdown = {
+      documentation: [] as Array<{ reason: string; penalty: number }>,
+      lossHistory: [] as Array<{ reason: string; penalty: number }>,
+      exposure: [] as Array<{ reason: string; penalty: number }>,
+      dataQuality: [] as Array<{ reason: string; penalty: number }>,
+    };
+    const keyDrivers: Array<{ type: 'positive' | 'warning' | 'negative'; text: string }> = [];
+
+    // A. Documentation Penalty (0-40 points)
+    let documentationPenalty = 0;
+    const submission = (data.submission || {}) as Record<string, unknown>;
+    const priorCarrier = (data.priorCarrier || {}) as Record<string, unknown>;
+    const locations = (data.locations || []) as Array<Record<string, unknown>>;
+    const classification = (data.classification || []) as Array<Record<string, unknown>>;
+
+    // Missing required WC app info - Workers Comp specific fields
+    if (!submission.fein) {
+      documentationPenalty += 5;
+      breakdown.documentation.push({ reason: 'Missing FEIN (Federal Employer Identification Number)', penalty: 5 });
+    }
+    // Check for payroll by class - Workers Comp requires payroll breakdown by class code
+    if (!classification || classification.length === 0 || !classification.some((c: Record<string, unknown>) => {
+      const payroll = typeof c.estimatedAnnualPayroll === 'number' ? c.estimatedAnnualPayroll : 0;
+      return payroll > 0;
+    })) {
+      documentationPenalty += 5;
+      breakdown.documentation.push({ reason: 'Missing payroll by class code', penalty: 5 });
+    }
+    // Check for locations - Workers Comp requires location information
+    if (!locations || locations.length === 0) {
+      documentationPenalty += 5;
+      breakdown.documentation.push({ reason: 'Missing location information', penalty: 5 });
+    }
+    // Check for employee count - Workers Comp specific: check classification array for employee counts
+    const hasEmployeeCount = classification.some((c: Record<string, unknown>) => {
+      const fullTime = typeof c.numEmployeesFullTime === 'number' ? c.numEmployeesFullTime : 0;
+      const partTime = typeof c.numEmployeesPartTime === 'number' ? c.numEmployeesPartTime : 0;
+      return fullTime > 0 || partTime > 0;
+    });
+    if (!hasEmployeeCount) {
+      documentationPenalty += 5;
+      breakdown.documentation.push({ reason: 'Missing number of employees (full-time or part-time)', penalty: 5 });
+    }
+
+    // Loss runs
+    const lossRunsAttached = priorCarrier.lossRunsAttached === true || priorCarrier.lossRunsAttached === 'Yes';
+    if (!lossRunsAttached) {
+      documentationPenalty += 20;
+      breakdown.documentation.push({ reason: 'No loss runs provided', penalty: 20 });
+      keyDrivers.push({ type: 'negative', text: 'No loss runs provided' });
+    } else {
+      keyDrivers.push({ type: 'positive', text: 'Loss runs provided' });
+    }
+
+    // Loss runs age (check if priorCarrierYear is recent)
+    if (priorCarrier.priorCarrierYear) {
+      const priorYear = typeof priorCarrier.priorCarrierYear === 'number' ? priorCarrier.priorCarrierYear : parseInt(String(priorCarrier.priorCarrierYear), 10);
+      const currentYear = new Date().getFullYear();
+      const yearsAgo = currentYear - priorYear;
+      if (yearsAgo > 2) {
+        documentationPenalty += 10;
+        breakdown.documentation.push({ reason: `Loss runs older than ${yearsAgo} years`, penalty: 10 });
+      }
+    }
+
+    // Cap documentation penalty at 40
+    documentationPenalty = Math.min(40, documentationPenalty);
+
+    // B. Loss History Penalty (0-30 points)
+    let lossHistoryPenalty = 0;
+    const lossHistory = (data.lossHistory || []) as Array<Record<string, unknown>>;
+
+    if (lossHistory.length > 0) {
+      // Calculate loss ratio if premium is available
+      const priorPremium = typeof priorCarrier.priorAnnualPremium === 'number' ? priorCarrier.priorAnnualPremium : null;
+      let totalIncurred = 0;
+      let claimCount = 0;
+      let hasLargeClaim = false;
+      let hasLargeOpenClaim = false;
+
+      lossHistory.forEach((claim: Record<string, unknown>) => {
+        const incurred = typeof claim.claimTotalIncurred === 'number' ? claim.claimTotalIncurred : 0;
+        totalIncurred += incurred;
+        claimCount++;
+        if (incurred > 50000) hasLargeClaim = true;
+        if ((claim.claimStatus === 'Open' || claim.claimStatus === 'open') && incurred > 25000) {
+          hasLargeOpenClaim = true;
+        }
+      });
+
+      if (priorPremium && priorPremium > 0) {
+        const lossRatio = (totalIncurred / priorPremium) * 100;
+        if (lossRatio >= 150) {
+          lossHistoryPenalty += 30;
+          breakdown.lossHistory.push({ reason: `Loss ratio ${lossRatio.toFixed(1)}% (≥150%)`, penalty: 30 });
+        } else if (lossRatio >= 100) {
+          lossHistoryPenalty += 20;
+          breakdown.lossHistory.push({ reason: `Loss ratio ${lossRatio.toFixed(1)}% (100-150%)`, penalty: 20 });
+        } else if (lossRatio >= 60) {
+          lossHistoryPenalty += 10;
+          breakdown.lossHistory.push({ reason: `Loss ratio ${lossRatio.toFixed(1)}% (60-100%)`, penalty: 10 });
+        } else if (lossRatio >= 30) {
+          lossHistoryPenalty += 5;
+          breakdown.lossHistory.push({ reason: `Loss ratio ${lossRatio.toFixed(1)}% (30-60%)`, penalty: 5 });
+        } else {
+          keyDrivers.push({ type: 'positive', text: `Low loss ratio (${lossRatio.toFixed(1)}%)` });
+        }
+      } else {
+        // Use proxies if premium unknown
+        if (claimCount >= 5) {
+          lossHistoryPenalty += 10;
+          breakdown.lossHistory.push({ reason: `${claimCount} claims in last 5 years`, penalty: 10 });
+        }
+        if (hasLargeClaim) {
+          lossHistoryPenalty += 10;
+          breakdown.lossHistory.push({ reason: 'Single claim > $50k', penalty: 10 });
+        }
+        if (hasLargeOpenClaim) {
+          lossHistoryPenalty += 10;
+          breakdown.lossHistory.push({ reason: 'Open claim > $25k incurred', penalty: 10 });
+        }
+      }
+
+      if (claimCount === 0 || (claimCount < 3 && totalIncurred < 10000)) {
+        keyDrivers.push({ type: 'positive', text: 'Low claim frequency and minimal losses' });
+      }
+    } else {
+      keyDrivers.push({ type: 'positive', text: 'No prior claims' });
+    }
+
+    // Cap loss history penalty at 30
+    lossHistoryPenalty = Math.min(30, lossHistoryPenalty);
+
+    // C. Exposure Complexity Penalty (0-20 points)
+    let exposurePenalty = 0;
+
+    // Multi-state operations - coveredStatesPart1 is a string (comma or space separated)
+    const coverage = (data.coverage || {}) as Record<string, unknown>;
+    const coveredStatesStr = String(coverage.coveredStatesPart1 || '');
+    // Parse states from string (could be comma-separated, space-separated, or single state)
+    const stateList = coveredStatesStr
+      .split(/[,\s]+/)
+      .map((s: string) => s.trim())
+      .filter((s: string) => s && s !== 'N/A' && s.length === 2); // Filter for valid 2-letter state codes
+    const stateCount = stateList.length;
+    if (stateCount >= 4) {
+      exposurePenalty += 10;
+      breakdown.exposure.push({ reason: `Multi-state operations (${stateCount} states)`, penalty: 10 });
+      keyDrivers.push({ type: 'warning', text: `Multi-state exposure (${stateCount} states)` });
+    } else if (stateCount >= 2) {
+      exposurePenalty += 5;
+      breakdown.exposure.push({ reason: `Multi-state operations (${stateCount} states)`, penalty: 5 });
+      keyDrivers.push({ type: 'warning', text: `Multi-state exposure (${stateCount} states)` });
+    }
+
+    // Higher-hazard class codes - Workers Comp specific high-hazard codes
+    // Common high-hazard WC class codes: 5000s (construction), 6000s (roofing), 8000s (manufacturing), etc.
+    const hasHighHazard = classification.some((c: Record<string, unknown>) => {
+      const code = String(c.classCode || '').trim();
+      const desc = String(c.classCodeDescription || '').toLowerCase();
+      // Check for high-hazard WC class codes (5000s = construction, 6000s = roofing, 8000s = manufacturing)
+      const codeNum = parseInt(code, 10);
+      const isHighHazardCode = !isNaN(codeNum) && (
+        (codeNum >= 5000 && codeNum < 6000) || // Construction
+        (codeNum >= 6000 && codeNum < 7000) || // Roofing, etc.
+        (codeNum >= 8000 && codeNum < 9000)   // Manufacturing
+      );
+      return isHighHazardCode || 
+        desc.includes('construction') || 
+        desc.includes('roofing') || 
+        desc.includes('roofer') ||
+        desc.includes('manufacturing') ||
+        desc.includes('welding') ||
+        desc.includes('demolition');
+    });
+    if (hasHighHazard) {
+      exposurePenalty += 10;
+      breakdown.exposure.push({ reason: 'Higher-hazard class codes present', penalty: 10 });
+    }
+
+    // Very large payroll (heuristic: > $5M)
+    const totalPayroll = classification.reduce((sum: number, c: Record<string, unknown>) => {
+      const payroll = typeof c.estimatedAnnualPayroll === 'number' ? c.estimatedAnnualPayroll : 0;
+      return sum + payroll;
+    }, 0);
+    if (totalPayroll > 5000000) {
+      exposurePenalty += 5;
+      breakdown.exposure.push({ reason: `Very large payroll ($${(totalPayroll / 1000000).toFixed(1)}M)`, penalty: 5 });
+    }
+
+    // Cap exposure penalty at 20
+    exposurePenalty = Math.min(20, exposurePenalty);
+
+    // D. Data Quality Penalty (0-10 points)
+    let dataQualityPenalty = 0;
+
+    // Check for conflicting FEINs (if multiple sources)
+    // This would require checking fieldExtractions for conflicts - simplified for now
+    // Check for low confidence extractions
+    // This would require fieldExtractions data - simplified for now
+
+    // Cap data quality penalty at 10
+    dataQualityPenalty = Math.min(10, dataQualityPenalty);
+
+    // Calculate final score
+    const score = Math.max(0, Math.min(100, 100 - documentationPenalty - lossHistoryPenalty - exposurePenalty - dataQualityPenalty));
+
+    return {
+      score,
+      documentationPenalty,
+      lossHistoryPenalty,
+      exposurePenalty,
+      dataQualityPenalty,
+      breakdown,
+      keyDrivers,
+    };
   };
 
   const renderField = (
@@ -662,6 +898,19 @@ function SubmissionPageContent() {
   }
 
   const fieldExtractions = submission.extractionResult?.fieldExtractions || [];
+  
+  // Calculate bindability index
+  const bindabilityData = submission.extractionResult?.data ? calculateBindabilityIndex(submission.extractionResult.data) : null;
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return 'bg-green-100 text-green-800 border-green-300';
+    if (score >= 60) return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+    return 'bg-red-100 text-red-800 border-red-300';
+  };
+  const getScoreLabel = (score: number) => {
+    if (score >= 80) return 'High';
+    if (score >= 60) return 'Medium';
+    return 'Low';
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -687,6 +936,48 @@ function SubmissionPageContent() {
             </div>
           </div>
         </div>
+
+        {/* Bindability Index */}
+        {bindabilityData && (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900 mb-2">Bindability Index</h2>
+                <div className="flex items-center gap-4">
+                  <div className={`px-4 py-2 rounded-lg border-2 font-bold text-2xl ${getScoreColor(bindabilityData.score)}`}>
+                    {bindabilityData.score} / 100
+                  </div>
+                  <div className="text-sm text-slate-600">
+                    <span className="font-semibold">Rating:</span> {getScoreLabel(bindabilityData.score)}
+                  </div>
+                </div>
+                {bindabilityData.keyDrivers.length > 0 && (
+                  <div className="mt-4 space-y-1">
+                    <p className="text-sm font-semibold text-slate-700 mb-2">Key Drivers:</p>
+                    <ul className="space-y-1">
+                      {bindabilityData.keyDrivers.map((driver, idx) => (
+                        <li key={idx} className="text-sm flex items-center gap-2">
+                          {driver.type === 'positive' && <span className="text-green-600">✅</span>}
+                          {driver.type === 'warning' && <span className="text-yellow-600">⚠️</span>}
+                          {driver.type === 'negative' && <span className="text-red-600">❌</span>}
+                          <span className={driver.type === 'positive' ? 'text-green-700' : driver.type === 'warning' ? 'text-yellow-700' : 'text-red-700'}>
+                            {driver.text}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setShowBindabilityDetails(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+              >
+                View Calculation
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Email Information */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
@@ -927,6 +1218,135 @@ function SubmissionPageContent() {
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bindability Index Calculation Popup */}
+        {showBindabilityDetails && bindabilityData && (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowBindabilityDetails(false)}
+          >
+            <div
+              className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-2xl font-bold text-slate-900">Bindability Index Calculation</h2>
+                  <button
+                    onClick={() => setShowBindabilityDetails(false)}
+                    className="text-slate-400 hover:text-slate-600"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className={`px-4 py-2 rounded-lg border-2 font-bold text-2xl ${getScoreColor(bindabilityData.score)}`}>
+                    {bindabilityData.score} / 100
+                  </div>
+                  <div className="text-sm text-slate-600">
+                    <span className="font-semibold">Rating:</span> {getScoreLabel(bindabilityData.score)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Formula */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="text-sm font-semibold text-blue-900 mb-2">Formula</h3>
+                  <p className="text-sm text-blue-800">
+                    Bindability Index = 100 − (Documentation Penalty + Loss History Penalty + Exposure Complexity Penalty + Data Quality Penalty)
+                  </p>
+                  <p className="text-sm text-blue-800 mt-2 font-mono">
+                    {bindabilityData.score} = 100 − ({bindabilityData.documentationPenalty} + {bindabilityData.lossHistoryPenalty} + {bindabilityData.exposurePenalty} + {bindabilityData.dataQualityPenalty})
+                  </p>
+                </div>
+
+                {/* Documentation Penalty */}
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-3">
+                    A. Documentation Penalty: {bindabilityData.documentationPenalty} / 40
+                  </h3>
+                  {bindabilityData.breakdown.documentation.length > 0 ? (
+                    <ul className="space-y-2">
+                      {bindabilityData.breakdown.documentation.map((item, idx) => (
+                        <li key={idx} className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <span className="text-sm text-red-800">{item.reason}</span>
+                          <span className="text-sm font-semibold text-red-900">-{item.penalty} pts</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-green-700 p-3 bg-green-50 border border-green-200 rounded-lg">✅ No documentation issues</p>
+                  )}
+                </div>
+
+                {/* Loss History Penalty */}
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-3">
+                    B. Loss History Penalty: {bindabilityData.lossHistoryPenalty} / 30
+                  </h3>
+                  {bindabilityData.breakdown.lossHistory.length > 0 ? (
+                    <ul className="space-y-2">
+                      {bindabilityData.breakdown.lossHistory.map((item, idx) => (
+                        <li key={idx} className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <span className="text-sm text-red-800">{item.reason}</span>
+                          <span className="text-sm font-semibold text-red-900">-{item.penalty} pts</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-green-700 p-3 bg-green-50 border border-green-200 rounded-lg">✅ No loss history issues</p>
+                  )}
+                </div>
+
+                {/* Exposure Complexity Penalty */}
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-3">
+                    C. Exposure Complexity Penalty: {bindabilityData.exposurePenalty} / 20
+                  </h3>
+                  {bindabilityData.breakdown.exposure.length > 0 ? (
+                    <ul className="space-y-2">
+                      {bindabilityData.breakdown.exposure.map((item, idx) => (
+                        <li key={idx} className="flex items-center justify-between p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <span className="text-sm text-yellow-800">{item.reason}</span>
+                          <span className="text-sm font-semibold text-yellow-900">-{item.penalty} pts</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-green-700 p-3 bg-green-50 border border-green-200 rounded-lg">✅ No exposure complexity issues</p>
+                  )}
+                </div>
+
+                {/* Data Quality Penalty */}
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-3">
+                    D. Data Quality Penalty: {bindabilityData.dataQualityPenalty} / 10
+                  </h3>
+                  {bindabilityData.breakdown.dataQuality.length > 0 ? (
+                    <ul className="space-y-2">
+                      {bindabilityData.breakdown.dataQuality.map((item, idx) => (
+                        <li key={idx} className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <span className="text-sm text-red-800">{item.reason}</span>
+                          <span className="text-sm font-semibold text-red-900">-{item.penalty} pts</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-green-700 p-3 bg-green-50 border border-green-200 rounded-lg">✅ No data quality issues</p>
+                  )}
+                </div>
               </div>
             </div>
           </div>

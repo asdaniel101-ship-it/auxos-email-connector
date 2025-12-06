@@ -1705,6 +1705,30 @@ The Auxo processor
     const expectedFieldsSchema = await this.getExpectedFieldsSchema();
     let html = '';
 
+    // Bindability Index
+    const bindabilityData = this.calculateBindabilityIndex(data);
+    if (bindabilityData) {
+      html += '<div class="section">';
+      html += '<div class="section-header">Bindability Index</div>';
+      html += '<table class="details-table">';
+      html += '<tr><td style="padding: 12px; font-weight: 600; color: #111827;">Score</td>';
+      const scoreColor = bindabilityData.score >= 80 ? '#059669' : bindabilityData.score >= 60 ? '#d97706' : '#dc2626';
+      const scoreLabel = bindabilityData.score >= 80 ? 'High' : bindabilityData.score >= 60 ? 'Medium' : 'Low';
+      html += `<td style="padding: 12px;"><span style="font-size: 24px; font-weight: bold; color: ${scoreColor};">${bindabilityData.score}</span> / 100 <span style="color: #6b7280;">(${scoreLabel})</span></td></tr>`;
+      
+      if (bindabilityData.keyDrivers && bindabilityData.keyDrivers.length > 0) {
+        html += '<tr><td style="padding: 12px; font-weight: 600; color: #111827; vertical-align: top;">Key Drivers</td><td style="padding: 12px;">';
+        html += '<ul style="margin: 0; padding-left: 20px;">';
+        bindabilityData.keyDrivers.forEach((driver: any) => {
+          const icon = driver.type === 'positive' ? '✅' : driver.type === 'warning' ? '⚠️' : '❌';
+          html += `<li style="margin-bottom: 4px;">${icon} ${this.escapeHtml(driver.text)}</li>`;
+        });
+        html += '</ul></td></tr>';
+      }
+      
+      html += '</table></div>';
+    }
+
     // Always render all sections from schema, even if data is missing
     // Submission Information
     html += '<div class="section">';
@@ -2690,6 +2714,178 @@ Response format: Just the field name or "null"`;
     html += '</table>';
 
     return html;
+  }
+
+  /**
+   * Calculate Bindability Index
+   */
+  private calculateBindabilityIndex(data: any): {
+    score: number;
+    documentationPenalty: number;
+    lossHistoryPenalty: number;
+    exposurePenalty: number;
+    dataQualityPenalty: number;
+    keyDrivers: Array<{ type: 'positive' | 'warning' | 'negative'; text: string }>;
+  } | null {
+    if (!data) return null;
+
+    const keyDrivers: Array<{ type: 'positive' | 'warning' | 'negative'; text: string }> = [];
+
+    // A. Documentation Penalty (0-40 points)
+    let documentationPenalty = 0;
+    const submission = data.submission || {};
+    const priorCarrier = data.priorCarrier || {};
+    const locations = data.locations || [];
+    const classification = data.classification || [];
+
+    // Missing required WC app info - Workers Comp specific fields
+    if (!submission.fein) documentationPenalty += 5;
+    // Check for payroll by class - Workers Comp requires payroll breakdown by class code
+    if (!classification || classification.length === 0 || !classification.some((c: any) => {
+      const payroll = typeof c.estimatedAnnualPayroll === 'number' ? c.estimatedAnnualPayroll : 0;
+      return payroll > 0;
+    })) {
+      documentationPenalty += 5;
+    }
+    // Check for locations - Workers Comp requires location information
+    if (!locations || locations.length === 0) documentationPenalty += 5;
+    // Check for employee count - Workers Comp specific: check classification array for employee counts
+    const hasEmployeeCount = classification.some((c: any) => {
+      const fullTime = typeof c.numEmployeesFullTime === 'number' ? c.numEmployeesFullTime : 0;
+      const partTime = typeof c.numEmployeesPartTime === 'number' ? c.numEmployeesPartTime : 0;
+      return fullTime > 0 || partTime > 0;
+    });
+    if (!hasEmployeeCount) {
+      documentationPenalty += 5;
+    }
+
+    const lossRunsAttached = priorCarrier.lossRunsAttached === true || priorCarrier.lossRunsAttached === 'Yes';
+    if (!lossRunsAttached) {
+      documentationPenalty += 20;
+      keyDrivers.push({ type: 'negative', text: 'No loss runs provided' });
+    } else {
+      keyDrivers.push({ type: 'positive', text: 'Loss runs provided' });
+    }
+
+    if (priorCarrier.priorCarrierYear) {
+      const priorYear = typeof priorCarrier.priorCarrierYear === 'number' ? priorCarrier.priorCarrierYear : parseInt(String(priorCarrier.priorCarrierYear), 10);
+      const currentYear = new Date().getFullYear();
+      const yearsAgo = currentYear - priorYear;
+      if (yearsAgo > 2) documentationPenalty += 10;
+    }
+
+    documentationPenalty = Math.min(40, documentationPenalty);
+
+    // B. Loss History Penalty (0-30 points)
+    let lossHistoryPenalty = 0;
+    const lossHistory = data.lossHistory || [];
+
+    if (lossHistory.length > 0) {
+      const priorPremium = typeof priorCarrier.priorAnnualPremium === 'number' ? priorCarrier.priorAnnualPremium : null;
+      let totalIncurred = 0;
+      let claimCount = 0;
+      let hasLargeClaim = false;
+      let hasLargeOpenClaim = false;
+
+      lossHistory.forEach((claim: any) => {
+        const incurred = typeof claim.claimTotalIncurred === 'number' ? claim.claimTotalIncurred : 0;
+        totalIncurred += incurred;
+        claimCount++;
+        if (incurred > 50000) hasLargeClaim = true;
+        if ((claim.claimStatus === 'Open' || claim.claimStatus === 'open') && incurred > 25000) {
+          hasLargeOpenClaim = true;
+        }
+      });
+
+      if (priorPremium && priorPremium > 0) {
+        const lossRatio = (totalIncurred / priorPremium) * 100;
+        if (lossRatio >= 150) {
+          lossHistoryPenalty += 30;
+        } else if (lossRatio >= 100) {
+          lossHistoryPenalty += 20;
+        } else if (lossRatio >= 60) {
+          lossHistoryPenalty += 10;
+        } else if (lossRatio >= 30) {
+          lossHistoryPenalty += 5;
+        } else {
+          keyDrivers.push({ type: 'positive', text: `Low loss ratio (${lossRatio.toFixed(1)}%)` });
+        }
+      } else {
+        if (claimCount >= 5) lossHistoryPenalty += 10;
+        if (hasLargeClaim) lossHistoryPenalty += 10;
+        if (hasLargeOpenClaim) lossHistoryPenalty += 10;
+      }
+
+      if (claimCount === 0 || (claimCount < 3 && totalIncurred < 10000)) {
+        keyDrivers.push({ type: 'positive', text: 'Low claim frequency and minimal losses' });
+      }
+    } else {
+      keyDrivers.push({ type: 'positive', text: 'No prior claims' });
+    }
+
+    lossHistoryPenalty = Math.min(30, lossHistoryPenalty);
+
+    // C. Exposure Complexity Penalty (0-20 points)
+    let exposurePenalty = 0;
+    // Multi-state operations - coveredStatesPart1 is a string (comma or space separated)
+    const coverage = data.coverage || {};
+    const coveredStatesStr = String(coverage.coveredStatesPart1 || '');
+    // Parse states from string (could be comma-separated, space-separated, or single state)
+    const stateList = coveredStatesStr
+      .split(/[,\s]+/)
+      .map((s: string) => s.trim())
+      .filter((s: string) => s && s !== 'N/A' && s.length === 2); // Filter for valid 2-letter state codes
+    const stateCount = stateList.length;
+    if (stateCount >= 4) {
+      exposurePenalty += 10;
+      keyDrivers.push({ type: 'warning', text: `Multi-state exposure (${stateCount} states)` });
+    } else if (stateCount >= 2) {
+      exposurePenalty += 5;
+      keyDrivers.push({ type: 'warning', text: `Multi-state exposure (${stateCount} states)` });
+    }
+
+    // Higher-hazard class codes - Workers Comp specific high-hazard codes
+    const hasHighHazard = classification.some((c: any) => {
+      const code = String(c.classCode || '').trim();
+      const desc = String(c.classCodeDescription || '').toLowerCase();
+      // Check for high-hazard WC class codes (5000s = construction, 6000s = roofing, 8000s = manufacturing)
+      const codeNum = parseInt(code, 10);
+      const isHighHazardCode = !isNaN(codeNum) && (
+        (codeNum >= 5000 && codeNum < 6000) || // Construction
+        (codeNum >= 6000 && codeNum < 7000) || // Roofing, etc.
+        (codeNum >= 8000 && codeNum < 9000)   // Manufacturing
+      );
+      return isHighHazardCode || 
+        desc.includes('construction') || 
+        desc.includes('roofing') || 
+        desc.includes('roofer') ||
+        desc.includes('manufacturing') ||
+        desc.includes('welding') ||
+        desc.includes('demolition');
+    });
+    if (hasHighHazard) exposurePenalty += 10;
+
+    const totalPayroll = classification.reduce((sum: number, c: any) => {
+      const payroll = typeof c.estimatedAnnualPayroll === 'number' ? c.estimatedAnnualPayroll : 0;
+      return sum + payroll;
+    }, 0);
+    if (totalPayroll > 5000000) exposurePenalty += 5;
+
+    exposurePenalty = Math.min(20, exposurePenalty);
+
+    // D. Data Quality Penalty (0-10 points)
+    const dataQualityPenalty = 0; // Simplified for now
+
+    const score = Math.max(0, Math.min(100, 100 - documentationPenalty - lossHistoryPenalty - exposurePenalty - dataQualityPenalty));
+
+    return {
+      score,
+      documentationPenalty,
+      lossHistoryPenalty,
+      exposurePenalty,
+      dataQualityPenalty,
+      keyDrivers,
+    };
   }
 
   /**
