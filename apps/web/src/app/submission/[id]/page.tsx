@@ -256,6 +256,163 @@ function SubmissionPageContent() {
     return merged;
   };
 
+  const renderLossHistoryTable = (
+    lossHistory: unknown,
+    priorCarrier: Record<string, unknown>,
+    fieldExtractions: FieldExtraction[],
+  ): React.JSX.Element | null => {
+    // Handle lossHistory as array or extract from object
+    let claimsArray: Array<Record<string, unknown>> = [];
+    
+    if (Array.isArray(lossHistory)) {
+      claimsArray = lossHistory;
+    } else if (lossHistory && typeof lossHistory === 'object' && !Array.isArray(lossHistory)) {
+      const lossHistoryObj = lossHistory as Record<string, unknown>;
+      if (Array.isArray(lossHistoryObj.lossHistory)) {
+        claimsArray = lossHistoryObj.lossHistory as Array<Record<string, unknown>>;
+      } else if (Array.isArray(lossHistoryObj.claims)) {
+        claimsArray = lossHistoryObj.claims as Array<Record<string, unknown>>;
+      }
+    }
+
+    if (claimsArray.length === 0) {
+      return (
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-200">
+            Loss History
+          </h2>
+          <div className="text-slate-500 italic p-4 bg-slate-50 rounded-lg">
+            No loss history data available
+          </div>
+        </div>
+      );
+    }
+
+    // Define all claim field columns
+    const claimFields = [
+      { key: 'claimNumber', label: 'Claim Number' },
+      { key: 'claimStatus', label: 'Status' },
+      { key: 'claimType', label: 'Type' },
+      { key: 'claimDateOfLoss', label: 'Date of Loss' },
+      { key: 'claimDescription', label: 'Description' },
+      { key: 'claimCauseOfInjury', label: 'Cause of Injury' },
+      { key: 'claimBodyPart', label: 'Body Part' },
+      { key: 'claimPaidIndemnity', label: 'Paid Indemnity' },
+      { key: 'claimPaidMedical', label: 'Paid Medical' },
+      { key: 'claimReserve', label: 'Reserve' },
+      { key: 'claimTotalIncurred', label: 'Total Incurred' },
+      { key: 'claimLitigationFlag', label: 'Litigation' },
+    ];
+
+    const formatCurrency = (value: unknown): string => {
+      if (typeof value !== 'number' || isNaN(value) || value === 0) return '$0';
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(value);
+    };
+
+    const formatDate = (value: unknown): string => {
+      if (!value) return 'N/A';
+      if (typeof value === 'string') {
+        try {
+          const date = new Date(value);
+          if (!isNaN(date.getTime())) {
+            return date.toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+            });
+          }
+        } catch {
+          return String(value);
+        }
+      }
+      return String(value);
+    };
+
+    const formatBoolean = (value: unknown): string => {
+      if (value === true || value === 'true' || value === 'Yes') return 'Yes';
+      if (value === false || value === 'false' || value === 'No') return 'No';
+      return 'N/A';
+    };
+
+    const getFieldExtraction = (fieldPath: string) => {
+      return fieldExtractions.find((fe) => fe.fieldPath === fieldPath);
+    };
+
+    return (
+      <div className="mb-8">
+        <h2 className="text-xl font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-200">
+          Loss History
+        </h2>
+        <div className="overflow-x-auto">
+          <table className="min-w-full bg-white border border-slate-200 rounded-lg">
+            <thead className="bg-slate-50">
+              <tr>
+                {claimFields.map((field) => (
+                  <th
+                    key={field.key}
+                    className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider border-b border-slate-200"
+                  >
+                    {field.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {claimsArray.map((claim, index) => {
+                const rowExtractions = claimFields.map((field) => {
+                  const fieldPath = `lossHistory[${index}].${field.key}`;
+                  return getFieldExtraction(fieldPath);
+                });
+                const hasExtractedFields = rowExtractions.some((ext) => ext && ext.fieldValue !== null && ext.fieldValue !== undefined);
+
+                return (
+                  <tr
+                    key={index}
+                    className={hasExtractedFields ? 'bg-green-50 hover:bg-green-100' : 'hover:bg-slate-50'}
+                  >
+                    {claimFields.map((field) => {
+                      const value = claim[field.key];
+                      const fieldPath = `lossHistory[${index}].${field.key}`;
+                      const extraction = getFieldExtraction(fieldPath);
+                      const isExtracted = extraction && extraction.fieldValue !== null && extraction.fieldValue !== undefined;
+
+                      let displayValue: string;
+                      if (field.key.includes('Paid') || field.key.includes('Reserve') || field.key.includes('Incurred')) {
+                        displayValue = formatCurrency(value);
+                      } else if (field.key.includes('Date')) {
+                        displayValue = formatDate(value);
+                      } else if (field.key.includes('Flag') || field.key === 'claimLitigationFlag') {
+                        displayValue = formatBoolean(value);
+                      } else {
+                        displayValue = value !== null && value !== undefined ? String(value) : 'N/A';
+                      }
+
+                      return (
+                        <td
+                          key={field.key}
+                          className={`px-4 py-3 text-sm border-b border-slate-200 ${
+                            isExtracted ? 'text-slate-900 font-medium' : 'text-slate-600'
+                          }`}
+                        >
+                          {displayValue}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   const renderSection = (
     sectionName: string,
     sectionData: unknown,
@@ -603,10 +760,15 @@ function SubmissionPageContent() {
                   'coverage',
                 )}
                 {renderSection(
-                  'Loss History',
-                  submission.extractionResult?.data?.lossHistory || {},
+                  'Prior Carrier',
+                  submission.extractionResult?.data?.priorCarrier || {},
                   fieldExtractions,
-                  'lossHistory',
+                  'priorCarrier',
+                )}
+                {renderLossHistoryTable(
+                  submission.extractionResult?.data?.lossHistory || [],
+                  submission.extractionResult?.data?.priorCarrier || {},
+                  fieldExtractions,
                 )}
               </div>
 

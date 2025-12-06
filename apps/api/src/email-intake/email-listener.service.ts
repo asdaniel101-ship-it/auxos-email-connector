@@ -1751,20 +1751,32 @@ The Auxo processor
     );
     html += '</table></div>';
 
-    // Loss History
+    // Prior Carrier & Loss History
     html += '<div class="section">';
-    html += '<div class="section-header">Loss History</div>';
+    html += '<div class="section-header">Prior Carrier & Loss History</div>';
     html += '<table class="details-table">';
     html += this.renderSectionForEmail(
-      'lossHistory',
-      data?.lossHistory || {},
+      'priorCarrier',
+      data?.priorCarrier || {},
       fieldExtractions,
-      'lossHistory',
+      'priorCarrier',
       emailMessageId,
       frontendUrl,
       expectedFieldsSchema,
     );
     html += '</table></div>';
+
+    // Loss History - Year-by-Year Summary Table
+    html += '<div class="section">';
+    html += '<div class="section-header">Loss Run Summary (Workers Comp - Last 5 Years)</div>';
+    html += this.renderLossHistoryTableForEmail(
+      data?.lossHistory || [],
+      data?.priorCarrier || {},
+      fieldExtractions,
+      emailMessageId,
+      frontendUrl,
+    );
+    html += '</div>';
 
     // Premium Summary
     html += '<div class="section">';
@@ -2513,6 +2525,184 @@ Response format: Just the field name or "null"`;
     }
 
     return this.escapeHtml(value);
+  }
+
+  /**
+   * Render Loss History as a year-by-year summary table for email
+   */
+  private renderLossHistoryTableForEmail(
+    lossHistory: unknown,
+    priorCarrier: Record<string, unknown>,
+    fieldExtractions: any[],
+    emailMessageId: string,
+    frontendUrl: string,
+  ): string {
+    let html = '';
+
+    // Handle lossHistory as array or object
+    let claimsArray: Array<Record<string, unknown>> = [];
+    
+    if (Array.isArray(lossHistory)) {
+      claimsArray = lossHistory as Array<Record<string, unknown>>;
+    } else if (lossHistory && typeof lossHistory === 'object' && !Array.isArray(lossHistory)) {
+      const lossHistoryObj = lossHistory as Record<string, unknown>;
+      if (Array.isArray(lossHistoryObj.lossHistory)) {
+        claimsArray = lossHistoryObj.lossHistory as Array<Record<string, unknown>>;
+      } else if (Array.isArray(lossHistoryObj.claims)) {
+        claimsArray = lossHistoryObj.claims as Array<Record<string, unknown>>;
+      }
+    }
+
+    if (claimsArray.length === 0) {
+      html += '<div style="padding: 12px; color: #6b7280; font-style: italic;">No loss history data available</div>';
+      return html;
+    }
+
+    // Group claims by year and aggregate
+    const yearGroups = new Map<
+      number,
+      {
+        year: number;
+        carrier: string;
+        claims: Array<Record<string, unknown>>;
+        paidLoss: number;
+        reserved: number;
+        totalIncurred: number;
+      }
+    >();
+
+    // Extract carrier name from priorCarrier or use default
+    const defaultCarrier =
+      (priorCarrier.priorCarrierName as string) || 'Unknown';
+
+    claimsArray.forEach((claim: Record<string, unknown>) => {
+      // Extract year from claimDateOfLoss
+      let year: number | null = null;
+      if (claim.claimDateOfLoss) {
+        const dateStr = claim.claimDateOfLoss as string;
+        const dateMatch = dateStr.match(/(\d{4})/);
+        if (dateMatch) {
+          year = parseInt(dateMatch[1], 10);
+        }
+      }
+
+      // If no year from claim, try to get from priorCarrierYear
+      if (!year && priorCarrier.priorCarrierYear) {
+        year = typeof priorCarrier.priorCarrierYear === 'number'
+          ? priorCarrier.priorCarrierYear
+          : parseInt(String(priorCarrier.priorCarrierYear), 10);
+      }
+
+      // If still no year, use current year as fallback
+      if (!year || isNaN(year)) {
+        year = new Date().getFullYear();
+      }
+
+      // Get carrier for this year (could vary by year, but for now use default)
+      const carrier = defaultCarrier;
+
+      // Initialize year group if needed
+      if (!yearGroups.has(year)) {
+        yearGroups.set(year, {
+          year,
+          carrier,
+          claims: [],
+          paidLoss: 0,
+          reserved: 0,
+          totalIncurred: 0,
+        });
+      }
+
+      const group = yearGroups.get(year)!;
+      group.claims.push(claim);
+
+      // Aggregate amounts
+      const paidIndemnity =
+        typeof claim.claimPaidIndemnity === 'number'
+          ? claim.claimPaidIndemnity
+          : 0;
+      const paidMedical =
+        typeof claim.claimPaidMedical === 'number' ? claim.claimPaidMedical : 0;
+      const reserve =
+        typeof claim.claimReserve === 'number' ? claim.claimReserve : 0;
+      const totalIncurred =
+        typeof claim.claimTotalIncurred === 'number'
+          ? claim.claimTotalIncurred
+          : paidIndemnity + paidMedical + reserve;
+
+      group.paidLoss += paidIndemnity + paidMedical;
+      group.reserved += reserve;
+      group.totalIncurred += totalIncurred;
+    });
+
+    // Sort years descending
+    const sortedYears = Array.from(yearGroups.keys()).sort((a, b) => b - a);
+
+    // Build table HTML
+    html += '<table style="width: 100%; border-collapse: collapse; margin-top: 12px;">';
+    html += '<thead>';
+    html += '<tr style="background-color: #f3f4f6; border-bottom: 2px solid #d1d5db;">';
+    html += '<th style="padding: 10px; text-align: left; font-weight: 600; color: #111827;">Policy Year</th>';
+    html += '<th style="padding: 10px; text-align: left; font-weight: 600; color: #111827;">Carrier</th>';
+    html += '<th style="padding: 10px; text-align: right; font-weight: 600; color: #111827;"># of Claims</th>';
+    html += '<th style="padding: 10px; text-align: right; font-weight: 600; color: #111827;">Paid Loss</th>';
+    html += '<th style="padding: 10px; text-align: right; font-weight: 600; color: #111827;">Reserved</th>';
+    html += '<th style="padding: 10px; text-align: right; font-weight: 600; color: #111827;">Total Incurred</th>';
+    html += '</tr>';
+    html += '</thead>';
+    html += '<tbody>';
+
+    // Calculate totals
+    let totalClaims = 0;
+    let totalPaidLoss = 0;
+    let totalReserved = 0;
+    let totalIncurred = 0;
+
+    // Render each year
+    sortedYears.forEach((year) => {
+      const group = yearGroups.get(year)!;
+      totalClaims += group.claims.length;
+      totalPaidLoss += group.paidLoss;
+      totalReserved += group.reserved;
+      totalIncurred += group.totalIncurred;
+
+      html += '<tr style="border-bottom: 1px solid #e5e7eb;">';
+      html += `<td style="padding: 10px; color: #111827;">${year}</td>`;
+      html += `<td style="padding: 10px; color: #111827;">${this.escapeHtml(group.carrier)}</td>`;
+      html += `<td style="padding: 10px; text-align: right; color: #111827;">${group.claims.length}</td>`;
+      html += `<td style="padding: 10px; text-align: right; color: #111827;">${this.formatCurrency(group.paidLoss)}</td>`;
+      html += `<td style="padding: 10px; text-align: right; color: #111827;">${this.formatCurrency(group.reserved)}</td>`;
+      html += `<td style="padding: 10px; text-align: right; color: #111827;">${this.formatCurrency(group.totalIncurred)}</td>`;
+      html += '</tr>';
+    });
+
+    // Total row
+    html += '<tr style="background-color: #f9fafb; border-top: 2px solid #d1d5db; font-weight: 600;">';
+    html += '<td style="padding: 10px; color: #111827;"><strong>Total</strong></td>';
+    html += '<td style="padding: 10px; color: #111827;">-</td>';
+    html += `<td style="padding: 10px; text-align: right; color: #111827;"><strong>${totalClaims}</strong></td>`;
+    html += `<td style="padding: 10px; text-align: right; color: #111827;"><strong>${this.formatCurrency(totalPaidLoss)}</strong></td>`;
+    html += `<td style="padding: 10px; text-align: right; color: #111827;"><strong>${this.formatCurrency(totalReserved)}</strong></td>`;
+    html += `<td style="padding: 10px; text-align: right; color: #111827;"><strong>${this.formatCurrency(totalIncurred)}</strong></td>`;
+    html += '</tr>';
+
+    html += '</tbody>';
+    html += '</table>';
+
+    return html;
+  }
+
+  /**
+   * Format number as currency
+   */
+  private formatCurrency(amount: number): string {
+    if (isNaN(amount) || amount === 0) return '$0';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
   }
 
   /**
