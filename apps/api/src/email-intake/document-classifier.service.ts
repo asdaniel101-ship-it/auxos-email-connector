@@ -72,14 +72,27 @@ export class DocumentClassifierService {
       return 'sov';
     }
 
-    // Loss run detection
+    // Loss run detection - check BEFORE schedule to catch Excel loss runs
+    // Handle various filename formats: "loss run", "loss_run", "lossruns", "WC_LossRuns", etc.
     if (
       filename.includes('loss run') ||
       filename.includes('loss_run') ||
+      filename.includes('lossruns') ||
+      filename.includes('loss-runs') ||
       filename.includes('loss history') ||
       filename.includes('loss_history') ||
+      filename.includes('losshistory') ||
+      filename.includes('loss-history') ||
+      filename.includes('loss runs') ||
       filename.includes('claims experience') ||
-      filename.includes('claims_experience')
+      filename.includes('claims_experience') ||
+      filename.includes('claimsexperience') ||
+      filename.includes('claims-experience') ||
+      filename.includes('wc_loss') ||
+      filename.includes('wc-loss') ||
+      filename.includes('wcloss') ||
+      filename.includes('lossrun') ||
+      filename.includes('loss-run')
     ) {
       return 'loss_run';
     }

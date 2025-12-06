@@ -1022,6 +1022,7 @@ export class EmailListenerService {
         packagedResponse,
         emailData.id,
         fieldExtractions,
+        emailData.attachments,
       );
       const mailOptions: nodemailer.SendMailOptions = {
         from: this.email,
@@ -1115,6 +1116,7 @@ The Auxo processor
     packagedResponse: any,
     emailMessageId: string,
     fieldExtractions: any[] = [],
+    attachments?: any[],
   ): Promise<string> {
     // Get frontend URL from config or use default
     const frontendUrl =
@@ -1127,6 +1129,7 @@ The Auxo processor
           emailMessageId,
           fieldExtractions,
           frontendUrl,
+          attachments,
         )
       : this.convertTableToHtml(packagedResponse.table);
 
@@ -1701,12 +1704,13 @@ The Auxo processor
     emailMessageId: string,
     fieldExtractions: any[] = [],
     frontendUrl: string = 'http://localhost:3000',
+    attachments?: any[],
   ): Promise<string> {
     const expectedFieldsSchema = await this.getExpectedFieldsSchema();
     let html = '';
 
     // Bindability Index
-    const bindabilityData = this.calculateBindabilityIndex(data);
+    const bindabilityData = this.calculateBindabilityIndex(data, attachments);
     if (bindabilityData) {
       html += '<div class="section">';
       html += '<div class="section-header">Bindability Index</div>';
@@ -2719,7 +2723,10 @@ Response format: Just the field name or "null"`;
   /**
    * Calculate Bindability Index
    */
-  private calculateBindabilityIndex(data: any): {
+  private calculateBindabilityIndex(
+    data: any,
+    attachments?: any[],
+  ): {
     score: number;
     documentationPenalty: number;
     lossHistoryPenalty: number;
@@ -2759,7 +2766,18 @@ Response format: Just the field name or "null"`;
       documentationPenalty += 5;
     }
 
-    const lossRunsAttached = priorCarrier.lossRunsAttached === true || priorCarrier.lossRunsAttached === 'Yes';
+    // Loss runs - check both priorCarrier field and attachments directly
+    const lossRunsAttachedField = priorCarrier.lossRunsAttached === true || priorCarrier.lossRunsAttached === 'Yes';
+    const hasLossRunAttachment = attachments?.some((att: any) => 
+      att.documentType === 'loss_run' ||
+      (att.filename?.toLowerCase().includes('loss') && (
+        att.filename?.toLowerCase().includes('run') ||
+        att.filename?.toLowerCase().includes('history') ||
+        att.filename?.toLowerCase().includes('claim')
+      ))
+    ) || false;
+    const lossRunsAttached = lossRunsAttachedField || hasLossRunAttachment;
+    
     if (!lossRunsAttached) {
       documentationPenalty += 20;
       keyDrivers.push({ type: 'negative', text: 'No loss runs provided' });

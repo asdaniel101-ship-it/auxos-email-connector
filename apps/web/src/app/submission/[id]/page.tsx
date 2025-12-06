@@ -185,7 +185,10 @@ function SubmissionPageContent() {
     keyDrivers: Array<{ type: 'positive' | 'warning' | 'negative'; text: string }>;
   }
 
-  const calculateBindabilityIndex = (data: Record<string, unknown>): BindabilityCalculation => {
+  const calculateBindabilityIndex = (
+    data: Record<string, unknown>,
+    attachments?: Array<{ filename: string; documentType: string }>
+  ): BindabilityCalculation => {
     const breakdown = {
       documentation: [] as Array<{ reason: string; penalty: number }>,
       lossHistory: [] as Array<{ reason: string; penalty: number }>,
@@ -230,8 +233,18 @@ function SubmissionPageContent() {
       breakdown.documentation.push({ reason: 'Missing number of employees (full-time or part-time)', penalty: 5 });
     }
 
-    // Loss runs
-    const lossRunsAttached = priorCarrier.lossRunsAttached === true || priorCarrier.lossRunsAttached === 'Yes';
+    // Loss runs - check both priorCarrier field and attachments directly
+    const lossRunsAttachedField = priorCarrier.lossRunsAttached === true || priorCarrier.lossRunsAttached === 'Yes';
+    const hasLossRunAttachment = attachments?.some((att) => 
+      att.documentType === 'loss_run' ||
+      att.filename.toLowerCase().includes('loss') && (
+        att.filename.toLowerCase().includes('run') ||
+        att.filename.toLowerCase().includes('history') ||
+        att.filename.toLowerCase().includes('claim')
+      )
+    ) || false;
+    const lossRunsAttached = lossRunsAttachedField || hasLossRunAttachment;
+    
     if (!lossRunsAttached) {
       documentationPenalty += 20;
       breakdown.documentation.push({ reason: 'No loss runs provided', penalty: 20 });
@@ -900,7 +913,9 @@ function SubmissionPageContent() {
   const fieldExtractions = submission.extractionResult?.fieldExtractions || [];
   
   // Calculate bindability index
-  const bindabilityData = submission.extractionResult?.data ? calculateBindabilityIndex(submission.extractionResult.data) : null;
+  const bindabilityData = submission.extractionResult?.data 
+    ? calculateBindabilityIndex(submission.extractionResult.data, submission.attachments)
+    : null;
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'bg-green-100 text-green-800 border-green-300';
     if (score >= 60) return 'bg-yellow-100 text-yellow-800 border-yellow-300';
