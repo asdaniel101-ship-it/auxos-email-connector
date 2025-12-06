@@ -966,23 +966,6 @@ function SubmissionPageContent() {
                     <span className="font-semibold">Rating:</span> {getScoreLabel(bindabilityData.score)}
                   </div>
                 </div>
-                {bindabilityData.keyDrivers.length > 0 && (
-                  <div className="mt-4 space-y-1">
-                    <p className="text-sm font-semibold text-slate-700 mb-2">Key Drivers:</p>
-                    <ul className="space-y-1">
-                      {bindabilityData.keyDrivers.map((driver, idx) => (
-                        <li key={idx} className="text-sm flex items-center gap-2">
-                          {driver.type === 'positive' && <span className="text-green-600">✅</span>}
-                          {driver.type === 'warning' && <span className="text-yellow-600">⚠️</span>}
-                          {driver.type === 'negative' && <span className="text-red-600">❌</span>}
-                          <span className={driver.type === 'positive' ? 'text-green-700' : driver.type === 'warning' ? 'text-yellow-700' : 'text-red-700'}>
-                            {driver.text}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
               </div>
               <button
                 onClick={() => setShowBindabilityDetails(true)}

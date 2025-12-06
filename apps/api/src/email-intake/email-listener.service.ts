@@ -1719,17 +1719,6 @@ The Auxo processor
       const scoreColor = bindabilityData.score >= 80 ? '#059669' : bindabilityData.score >= 60 ? '#d97706' : '#dc2626';
       const scoreLabel = bindabilityData.score >= 80 ? 'High' : bindabilityData.score >= 60 ? 'Medium' : 'Low';
       html += `<td style="padding: 12px;"><span style="font-size: 24px; font-weight: bold; color: ${scoreColor};">${bindabilityData.score}</span> / 100 <span style="color: #6b7280;">(${scoreLabel})</span></td></tr>`;
-      
-      if (bindabilityData.keyDrivers && bindabilityData.keyDrivers.length > 0) {
-        html += '<tr><td style="padding: 12px; font-weight: 600; color: #111827; vertical-align: top;">Key Drivers</td><td style="padding: 12px;">';
-        html += '<ul style="margin: 0; padding-left: 20px;">';
-        bindabilityData.keyDrivers.forEach((driver: any) => {
-          const icon = driver.type === 'positive' ? '✅' : driver.type === 'warning' ? '⚠️' : '❌';
-          html += `<li style="margin-bottom: 4px;">${icon} ${this.escapeHtml(driver.text)}</li>`;
-        });
-        html += '</ul></td></tr>';
-      }
-      
       html += '</table></div>';
     }
 
@@ -2565,6 +2554,11 @@ Response format: Just the field name or "null"`;
     emailMessageId: string,
     frontendUrl: string,
   ): string {
+    // Helper to create clickable link for a field
+    const makeFieldLink = (fieldPath: string, displayValue: string): string => {
+      const url = `${frontendUrl}/submission/${emailMessageId}?field=${encodeURIComponent(fieldPath)}&fromEmail=true`;
+      return `<a href="${url}" style="color: #3b82f6; text-decoration: underline; font-weight: 600;">${displayValue}</a>`;
+    };
     let html = '';
 
     // Handle lossHistory as array or object
@@ -2586,13 +2580,14 @@ Response format: Just the field name or "null"`;
       return html;
     }
 
-    // Group claims by year and aggregate
+    // Group claims by year and aggregate, also track original claim indices
     const yearGroups = new Map<
       number,
       {
         year: number;
         carrier: string;
         claims: Array<Record<string, unknown>>;
+        claimIndices: number[]; // Track original indices for linking
         paidLoss: number;
         reserved: number;
         totalIncurred: number;
@@ -2603,7 +2598,7 @@ Response format: Just the field name or "null"`;
     const defaultCarrier =
       (priorCarrier.priorCarrierName as string) || 'Unknown';
 
-    claimsArray.forEach((claim: Record<string, unknown>) => {
+    claimsArray.forEach((claim: Record<string, unknown>, claimIndex: number) => {
       // Extract year from claimDateOfLoss
       let year: number | null = null;
       if (claim.claimDateOfLoss) {
@@ -2635,6 +2630,7 @@ Response format: Just the field name or "null"`;
           year,
           carrier,
           claims: [],
+          claimIndices: [],
           paidLoss: 0,
           reserved: 0,
           totalIncurred: 0,
@@ -2643,6 +2639,7 @@ Response format: Just the field name or "null"`;
 
       const group = yearGroups.get(year)!;
       group.claims.push(claim);
+      group.claimIndices.push(claimIndex);
 
       // Aggregate amounts
       const paidIndemnity =
@@ -2694,13 +2691,28 @@ Response format: Just the field name or "null"`;
       totalReserved += group.reserved;
       totalIncurred += group.totalIncurred;
 
+      // Use the first claim index for this year to create field paths
+      const firstClaimIndex = group.claimIndices.length > 0 ? group.claimIndices[0] : 0;
+
       html += '<tr style="border-bottom: 1px solid #e5e7eb;">';
       html += `<td style="padding: 10px; color: #111827;">${year}</td>`;
       html += `<td style="padding: 10px; color: #111827;">${this.escapeHtml(group.carrier)}</td>`;
-      html += `<td style="padding: 10px; text-align: right; color: #111827;">${group.claims.length}</td>`;
-      html += `<td style="padding: 10px; text-align: right; color: #111827;">${this.formatCurrency(group.paidLoss)}</td>`;
-      html += `<td style="padding: 10px; text-align: right; color: #111827;">${this.formatCurrency(group.reserved)}</td>`;
-      html += `<td style="padding: 10px; text-align: right; color: #111827;">${this.formatCurrency(group.totalIncurred)}</td>`;
+      
+      // Make claim count clickable - link to first claim of the year
+      const claimCountPath = `lossHistory[${firstClaimIndex}].claimNumber`;
+      html += `<td style="padding: 10px; text-align: right; color: #111827;">${makeFieldLink(claimCountPath, String(group.claims.length))}</td>`;
+      
+      // Make paid loss clickable - link to first claim's paid amounts
+      const paidLossPath = `lossHistory[${firstClaimIndex}].claimPaidIndemnity`;
+      html += `<td style="padding: 10px; text-align: right; color: #111827;">${makeFieldLink(paidLossPath, this.formatCurrency(group.paidLoss))}</td>`;
+      
+      // Make reserved clickable
+      const reservePath = `lossHistory[${firstClaimIndex}].claimReserve`;
+      html += `<td style="padding: 10px; text-align: right; color: #111827;">${makeFieldLink(reservePath, this.formatCurrency(group.reserved))}</td>`;
+      
+      // Make total incurred clickable
+      const totalIncurredPath = `lossHistory[${firstClaimIndex}].claimTotalIncurred`;
+      html += `<td style="padding: 10px; text-align: right; color: #111827;">${makeFieldLink(totalIncurredPath, this.formatCurrency(group.totalIncurred))}</td>`;
       html += '</tr>';
     });
 
