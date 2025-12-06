@@ -174,8 +174,20 @@ function SubmissionPageContent() {
     value: unknown,
     fieldExtractions: FieldExtraction[] = []
   ): React.JSX.Element | null => {
-    const extraction = fieldExtractions.find((fe) => fe.fieldPath === fieldPath);
+    // Try exact match first
+    let extraction = fieldExtractions.find((fe) => fe.fieldPath === fieldPath);
+    
+    // If no exact match, try to find by field name (for cases where path format differs)
+    if (!extraction) {
+      // Extract the last part of the path (the field name)
+      const pathParts = fieldPath.split('.');
+      const fieldKey = pathParts[pathParts.length - 1];
+      // Try to find extraction where fieldPath ends with the field key
+      extraction = fieldExtractions.find((fe) => fe.fieldPath.endsWith(`.${fieldKey}`) || fe.fieldPath === fieldKey);
+    }
     const hasValue = value !== null && value !== undefined && value !== '';
+    // Check if extraction has a fieldValue (was actually extracted)
+    const hasExtractedValue = extraction && extraction.fieldValue !== null && extraction.fieldValue !== undefined && extraction.fieldValue !== '';
     const displayValue = formatValue(value);
     const source = extraction?.source || 'email_body';
     const isClickable = extraction && extraction.fieldValue && extraction.documentChunk;
@@ -185,7 +197,7 @@ function SubmissionPageContent() {
         key={fieldPath}
         id={extraction ? `field-${extraction.id}` : undefined}
         className={`p-4 rounded-lg border-2 transition-all ${
-          hasValue && extraction
+          hasExtractedValue
             ? 'border-green-200 bg-green-50 cursor-pointer hover:shadow-md'
             : 'border-slate-200 bg-slate-50'
         } ${fieldParam === fieldPath ? 'ring-4 ring-blue-400' : ''}`}
