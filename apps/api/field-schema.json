@@ -222,6 +222,26 @@
       "locationFloor": {
         "type": "string",
         "description": "Floor or suite number if applicable"
+      },
+      "primaryOccupancy": {
+        "type": "string",
+        "description": "Main occupancy or use type of the location (e.g., Manufacturing, Office, Warehouse)"
+      },
+      "riskAddress": {
+        "type": "string",
+        "description": "Full address of location (street, city, state, ZIP)"
+      },
+      "city": {
+        "type": "string",
+        "description": "City where location is located"
+      },
+      "state": {
+        "type": "string",
+        "description": "Two-letter state abbreviation"
+      },
+      "zipCode": {
+        "type": "string",
+        "description": "ZIP code (5 or 9 digits)"
       }
     }
   },
@@ -268,9 +288,46 @@
       "estimatedAnnualManualPremium": {
         "type": "number",
         "description": "Estimated annual manual premium for this classification"
+      },
+      "numberOfEmployees": {
+        "type": "number",
+        "description": "Total employee count for this class"
+      },
+      "fullTimeEmployees": {
+        "type": "number",
+        "description": "Full-time employee count"
+      },
+      "partTimeEmployees": {
+        "type": "number",
+        "description": "Part-time employee count"
+      },
+      "seasonalEmployees": {
+        "type": "number",
+        "description": "Seasonal employee count"
+      },
+      "employeeType": {
+        "type": "string",
+        "description": "Employee type (Clerical, Outside Sales, etc.)"
+      },
+      "classDescription": {
+        "type": "string",
+        "description": "Job description for the class code"
       }
     }
   },
+  "payroll": {
+    "totalEstimatedAnnualPayroll": {
+      "type": "number",
+      "description": "Total estimated annual payroll across all classes/locations"
+    },
+    "totalEmployeeCount": {
+      "type": "number",
+      "description": "Total headcount across all locations"
+    },
+    "payrollBasis": {
+      "type": "string",
+      "description": "Payroll basis (Actual, Estimated, or Audited)"
+    },
   "coverage": {
     "coveredStatesPart1": {
       "type": "string",
@@ -319,9 +376,72 @@
     "managedCareOption": {
       "type": "string",
       "description": "Managed care option selected (if any)"
+    },
+    "eachAccidentLimit": {
+      "type": "number",
+      "description": "Employers Liability - Each Accident limit (Coverage A)"
+    },
+    "diseasePolicyLimit": {
+      "type": "number",
+      "description": "Employers Liability - Disease Policy Limit (Coverage B)"
+    },
+    "diseaseEachEmployeeLimit": {
+      "type": "number",
+      "description": "Employers Liability - Disease Each Employee Limit (Coverage C)"
+    },
+    "statesOfOperation": {
+      "type": "array",
+      "description": "Array of all states where employees work",
+      "items": {
+        "type": "string"
+      }
+    },
+    "monopolisticStates": {
+      "type": "array",
+      "description": "Monopolistic states (OH, ND, WA, WY) if applicable",
+      "items": {
+        "type": "string"
+      }
+    },
+    "waiverOfSubrogation": {
+      "type": "boolean",
+      "description": "Whether waiver of subrogation is requested"
+    },
+    "waiverOfSubrogationFor": {
+      "type": "array",
+      "description": "Specific entities for waiver of subrogation",
+      "items": {
+        "type": "string"
+      }
+    },
+    "additionalInsured": {
+      "type": "array",
+      "description": "List of additional insureds",
+      "items": {
+        "type": "string"
+      }
+    },
+    "alternateEmployer": {
+      "type": "boolean",
+      "description": "Whether alternate employer coverage is requested"
+    },
+    "voluntaryCompensation": {
+      "type": "boolean",
+      "description": "Whether voluntary compensation coverage is requested"
+    },
+    "foreignVoluntaryWorkers": {
+      "type": "boolean",
+      "description": "Whether foreign voluntary workers coverage is requested"
+    },
+    "uslhEndorsement": {
+      "type": "boolean",
+      "description": "Whether USL&H (US Longshore and Harbor Workers) endorsement is requested"
+    },
+    "maritimeEndorsement": {
+      "type": "boolean",
+      "description": "Whether maritime endorsement is requested"
     }
   },
-  "payroll": {
     "payrollScheduleAttached": {
       "type": "boolean",
       "description": "Whether payroll schedule is attached"
@@ -349,6 +469,32 @@
     "uninsuredSubcontractorPayroll": {
       "type": "number",
       "description": "Uninsured subcontractor payroll amount"
+    }
+  },
+  "rating": {
+    "experienceModificationRate": {
+      "type": "decimal",
+      "description": "Experience Modification Rate (EMR)"
+    },
+    "emrEffectiveDate": {
+      "type": "date",
+      "description": "Date of current EMR"
+    },
+    "emrState": {
+      "type": "string",
+      "description": "State where rated"
+    },
+    "scheduleRatingCredit": {
+      "type": "number",
+      "description": "Schedule credit/debit percentage"
+    },
+    "meritRating": {
+      "type": "string",
+      "description": "Merit rating if applicable"
+    },
+    "retrospectiveRating": {
+      "type": "boolean",
+      "description": "Whether retrospective rating applies"
     }
   },
   "priorCarrier": {
@@ -501,6 +647,229 @@
     "totalDepositPremiumAllStates": {
       "type": "number",
       "description": "Total deposit premium across all states"
+    }
+  },
+  "owners": {
+    "type": "array",
+    "description": "Array of owner/officer objects",
+    "items": {
+      "ownerName": {
+        "type": "string",
+        "description": "Name of owner/officer"
+      },
+      "ownerTitle": {
+        "type": "string",
+        "description": "Title (President, VP, etc.)"
+      },
+      "ownerDuties": {
+        "type": "text",
+        "description": "Job duties description"
+      },
+      "includedExcluded": {
+        "type": "boolean",
+        "description": "Include or exclude from coverage"
+      },
+      "ownershipPercentage": {
+        "type": "number",
+        "description": "Ownership percentage"
+      },
+      "estimatedAnnualPayroll": {
+        "type": "number",
+        "description": "Estimated annual payroll if included"
+      },
+      "classCode": {
+        "type": "string",
+        "description": "WC class code if included"
+      }
+    }
+  },
+  "safety": {
+    "writtenSafetyProgram": {
+      "type": "boolean",
+      "description": "Whether there is a formal written safety program"
+    },
+    "safetyCommittee": {
+      "type": "boolean",
+      "description": "Whether there is a safety committee"
+    },
+    "safetyMeetingFrequency": {
+      "type": "string",
+      "description": "How often safety meetings are conducted"
+    },
+    "drugTestingProgram": {
+      "type": "boolean",
+      "description": "Whether there is a drug testing program"
+    },
+    "drugTestingType": {
+      "type": "string",
+      "description": "Type of drug testing (Pre-employment, Random, Post-accident, etc.)"
+    },
+    "returnToWorkProgram": {
+      "type": "boolean",
+      "description": "Whether there is a return-to-work program"
+    },
+    "modifiedDutyAvailable": {
+      "type": "boolean",
+      "description": "Whether modified/light duty work is available"
+    },
+    "safetyTrainingProvided": {
+      "type": "boolean",
+      "description": "Whether formal safety training is provided"
+    },
+    "safetyTrainingTopics": {
+      "type": "array",
+      "description": "List of safety training topics covered",
+      "items": {
+        "type": "string"
+      }
+    },
+    "oshaRecordable": {
+      "type": "number",
+      "description": "Number of OSHA recordable incidents"
+    },
+    "oshaLostTimeCases": {
+      "type": "number",
+      "description": "Number of OSHA lost-time cases"
+    },
+    "oshaDartRate": {
+      "type": "decimal",
+      "description": "OSHA DART rate"
+    }
+  },
+  "subcontractors": {
+    "useSubcontractors": {
+      "type": "boolean",
+      "description": "Whether subcontractors are used"
+    },
+    "estimatedAnnualCost": {
+      "type": "number",
+      "description": "Estimated annual dollar amount paid to subcontractors"
+    },
+    "certificatesRequired": {
+      "type": "boolean",
+      "description": "Whether certificates of insurance are required from subcontractors"
+    },
+    "certificatesOnFile": {
+      "type": "boolean",
+      "description": "Whether certificates of insurance are maintained on file"
+    },
+    "subcontractorTypes": {
+      "type": "array",
+      "description": "Types of work that are subcontracted",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "vehicles": {
+    "numberOfVehicles": {
+      "type": "number",
+      "description": "Total number of vehicles owned, leased, or operated"
+    },
+    "employeesOperatingVehicles": {
+      "type": "number",
+      "description": "Number of employees who operate company vehicles"
+    },
+    "vehicleTypes": {
+      "type": "array",
+      "description": "Types of vehicles in the fleet",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mileageRadius": {
+      "type": "string",
+      "description": "Typical operating radius for vehicles"
+    },
+    "commercialAutoPolicy": {
+      "type": "boolean",
+      "description": "Whether a separate commercial auto insurance policy is maintained"
+    },
+    "hiredNonOwnedCoverage": {
+      "type": "boolean",
+      "description": "Whether hired/non-owned auto coverage is needed"
+    }
+  },
+  "business": {
+    "yearBusinessEstablished": {
+      "type": "number",
+      "description": "Year the business was established"
+    },
+    "legalEntity": {
+      "type": "string",
+      "description": "Legal entity type (Corporation, LLC, Sole Proprietor, Partnership, etc.)"
+    },
+    "fein": {
+      "type": "string",
+      "description": "Federal Employer ID Number"
+    },
+    "websiteUrl": {
+      "type": "string",
+      "description": "Company website URL"
+    },
+    "parentCompany": {
+      "type": "string",
+      "description": "Name of parent company if applicable"
+    },
+    "affiliatedCompanies": {
+      "type": "array",
+      "description": "List of related or affiliated companies",
+      "items": {
+        "type": "string"
+      }
+    },
+    "seasonalOperations": {
+      "type": "boolean",
+      "description": "Whether the business has seasonal operations"
+    },
+    "peakSeasons": {
+      "type": "array",
+      "description": "Months or seasons when business activity peaks",
+      "items": {
+        "type": "string"
+      }
+    },
+    "annualRevenue": {
+      "type": "number",
+      "description": "Gross annual revenue or sales"
+    },
+    "yearsWithCurrentManagement": {
+      "type": "number",
+      "description": "Number of years the current management team has been in place"
+    }
+  },
+  "contacts": {
+    "primaryContactName": {
+      "type": "string",
+      "description": "Name of the primary contact person"
+    },
+    "primaryContactTitle": {
+      "type": "string",
+      "description": "Job title of the primary contact person"
+    },
+    "primaryContactPhone": {
+      "type": "string",
+      "description": "Phone number of the primary contact person"
+    },
+    "primaryContactEmail": {
+      "type": "string",
+      "description": "Email address of the primary contact person"
+    },
+    "hrContactName": {
+      "type": "string",
+      "description": "Name of the HR contact person"
+    },
+    "hrContactEmail": {
+      "type": "string",
+      "description": "Email address of the HR contact person"
+    },
+    "safetyContactName": {
+      "type": "string",
+      "description": "Name of the safety contact person"
+    },
+    "safetyContactEmail": {
+      "type": "string",
+      "description": "Email address of the safety contact person"
     }
   }
 }

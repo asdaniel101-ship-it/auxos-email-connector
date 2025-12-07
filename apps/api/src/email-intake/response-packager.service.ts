@@ -259,38 +259,149 @@ Data: ${JSON.stringify(data, null, 2)}`,
       table += `Submission Type: ${data.submission.submissionType || 'N/A'}\n\n`;
     }
 
-    // Locations and Buildings
+    // Locations
     if (data.locations && Array.isArray(data.locations)) {
-      table += 'LOCATIONS & BUILDINGS\n';
-      table += '====================\n';
+      table += 'LOCATIONS\n';
+      table += '=========\n';
       for (const location of data.locations) {
         table += `\nLocation ${location.locationNumber || 'N/A'}:\n`;
-        if (location.buildings && Array.isArray(location.buildings)) {
-          for (const building of location.buildings) {
-            table += `  Building ${building.buildingNumber || 'N/A'}:\n`;
-            table += `    Address: ${building.riskAddress || 'N/A'}\n`;
-            table += `    Square Feet: ${building.buildingSqFt?.toLocaleString() || 'N/A'}\n`;
-            table += `    Building Limit: $${building.buildingLimit?.toLocaleString() || 'N/A'}\n`;
-            table += `    Construction: ${building.constructionType || 'N/A'}\n`;
-            table += `    Year Built: ${building.yearBuilt || 'N/A'}\n`;
-            table += `    Sprinklered: ${building.sprinklered ? 'Yes' : 'No'}\n`;
-          }
+        table += `  Address: ${location.riskAddress || location.locationStreetAddress || 'N/A'}\n`;
+        table += `  City: ${location.city || location.locationCity || 'N/A'}\n`;
+        table += `  State: ${location.state || location.locationState || 'N/A'}\n`;
+        table += `  ZIP: ${location.zipCode || location.locationZip || 'N/A'}\n`;
+        if (location.primaryOccupancy) {
+          table += `  Primary Occupancy: ${location.primaryOccupancy}\n`;
         }
       }
       table += '\n';
     }
 
-    // Coverage
+    // Classifications & Payroll
+    if (data.classification && Array.isArray(data.classification) && data.classification.length > 0) {
+      table += 'CLASSIFICATIONS & PAYROLL\n';
+      table += '========================\n';
+      for (const classItem of data.classification) {
+        table += `\nClass Code: ${classItem.classCode || 'N/A'}\n`;
+        table += `  Description: ${classItem.classCodeDescription || classItem.classDescription || 'N/A'}\n`;
+        table += `  State: ${classItem.wcState || classItem.state || 'N/A'}\n`;
+        table += `  Estimated Annual Payroll: $${classItem.estimatedAnnualPayroll?.toLocaleString() || 'N/A'}\n`;
+        if (classItem.numberOfEmployees) {
+          table += `  Number of Employees: ${classItem.numberOfEmployees}\n`;
+        }
+        if (classItem.fullTimeEmployees) {
+          table += `  Full-Time Employees: ${classItem.fullTimeEmployees}\n`;
+        }
+        if (classItem.partTimeEmployees) {
+          table += `  Part-Time Employees: ${classItem.partTimeEmployees}\n`;
+        }
+        if (classItem.rate) {
+          table += `  Rate: ${classItem.rate}\n`;
+        }
+        if (classItem.estimatedAnnualManualPremium) {
+          table += `  Estimated Premium: $${classItem.estimatedAnnualManualPremium?.toLocaleString() || 'N/A'}\n`;
+        }
+      }
+      table += '\n';
+    }
+
+    // Overall Payroll Summary
+    if (data.payroll) {
+      table += 'PAYROLL SUMMARY\n';
+      table += '===============\n';
+      if (data.payroll.totalEstimatedAnnualPayroll) {
+        table += `Total Estimated Annual Payroll: $${data.payroll.totalEstimatedAnnualPayroll.toLocaleString()}\n`;
+      }
+      if (data.payroll.totalEmployeeCount) {
+        table += `Total Employee Count: ${data.payroll.totalEmployeeCount}\n`;
+      }
+      if (data.payroll.payrollBasis) {
+        table += `Payroll Basis: ${data.payroll.payrollBasis}\n`;
+      }
+      table += '\n';
+    }
+
+    // Experience Modification & Rating
+    if (data.rating) {
+      table += 'EXPERIENCE MODIFICATION & RATING\n';
+      table += '================================\n';
+      if (data.rating.experienceModificationRate !== null && data.rating.experienceModificationRate !== undefined) {
+        table += `Experience Mod (EMR): ${data.rating.experienceModificationRate}\n`;
+      }
+      if (data.rating.emrEffectiveDate) {
+        table += `EMR Effective Date: ${data.rating.emrEffectiveDate}\n`;
+      }
+      if (data.rating.emrState) {
+        table += `EMR State: ${data.rating.emrState}\n`;
+      }
+      if (data.rating.scheduleRatingCredit) {
+        table += `Schedule Rating Credit: ${data.rating.scheduleRatingCredit}%\n`;
+      }
+      if (data.rating.retrospectiveRating) {
+        table += `Retrospective Rating: ${data.rating.retrospectiveRating ? 'Yes' : 'No'}\n`;
+      }
+      table += '\n';
+    }
+
+    // Coverage & Limits
     if (data.coverage) {
       table += 'COVERAGE & LIMITS\n';
       table += '=================\n';
-      table += `Policy Type: ${data.coverage.policyType || 'N/A'}\n`;
-      table += `Cause of Loss: ${data.coverage.causeOfLossForm || 'N/A'}\n`;
-      table += `Building Limit: $${data.coverage.buildingLimit?.toLocaleString() || 'N/A'}\n`;
-      table += `BPP Limit: $${data.coverage.businessPersonalPropertyLimit?.toLocaleString() || 'N/A'}\n`;
-      table += `Business Income Limit: $${data.coverage.businessIncomeLimit?.toLocaleString() || 'N/A'}\n`;
-      table += `Deductible: $${data.coverage.deductibleAllPeril?.toLocaleString() || 'N/A'}\n`;
-      table += `Coinsurance: ${data.coverage.coinsurancePercent || 'N/A'}%\n\n`;
+      if (data.coverage.statesOfOperation) {
+        const states = Array.isArray(data.coverage.statesOfOperation) 
+          ? data.coverage.statesOfOperation.join(', ')
+          : data.coverage.statesOfOperation;
+        table += `States of Operation: ${states}\n`;
+      }
+      if (data.coverage.eachAccidentLimit) {
+        table += `Employers Liability - Each Accident: $${data.coverage.eachAccidentLimit.toLocaleString()}\n`;
+      }
+      if (data.coverage.diseasePolicyLimit) {
+        table += `Employers Liability - Disease Policy Limit: $${data.coverage.diseasePolicyLimit.toLocaleString()}\n`;
+      }
+      if (data.coverage.diseaseEachEmployeeLimit) {
+        table += `Employers Liability - Disease Each Employee: $${data.coverage.diseaseEachEmployeeLimit.toLocaleString()}\n`;
+      }
+      if (data.coverage.medicalDeductible) {
+        table += `Medical Deductible: $${data.coverage.medicalDeductible.toLocaleString()}\n`;
+      }
+      if (data.coverage.indemnityDeductible) {
+        table += `Indemnity Deductible: $${data.coverage.indemnityDeductible.toLocaleString()}\n`;
+      }
+      if (data.coverage.uslhEndorsement) {
+        table += `USL&H Endorsement: ${data.coverage.uslhEndorsement ? 'Yes' : 'No'}\n`;
+      }
+      if (data.coverage.voluntaryCompensation) {
+        table += `Voluntary Compensation: ${data.coverage.voluntaryCompensation ? 'Yes' : 'No'}\n`;
+      }
+      table += '\n';
+    }
+
+    // Safety & Risk Management
+    if (data.safety) {
+      table += 'SAFETY & RISK MANAGEMENT\n';
+      table += '========================\n';
+      if (data.safety.writtenSafetyProgram !== null && data.safety.writtenSafetyProgram !== undefined) {
+        table += `Written Safety Program: ${data.safety.writtenSafetyProgram ? 'Yes' : 'No'}\n`;
+      }
+      if (data.safety.safetyCommittee !== null && data.safety.safetyCommittee !== undefined) {
+        table += `Safety Committee: ${data.safety.safetyCommittee ? 'Yes' : 'No'}\n`;
+      }
+      if (data.safety.safetyMeetingFrequency) {
+        table += `Safety Meeting Frequency: ${data.safety.safetyMeetingFrequency}\n`;
+      }
+      if (data.safety.drugTestingProgram !== null && data.safety.drugTestingProgram !== undefined) {
+        table += `Drug Testing Program: ${data.safety.drugTestingProgram ? 'Yes' : 'No'}\n`;
+      }
+      if (data.safety.returnToWorkProgram !== null && data.safety.returnToWorkProgram !== undefined) {
+        table += `Return-to-Work Program: ${data.safety.returnToWorkProgram ? 'Yes' : 'No'}\n`;
+      }
+      if (data.safety.oshaRecordable !== null && data.safety.oshaRecordable !== undefined) {
+        table += `OSHA Recordables: ${data.safety.oshaRecordable}\n`;
+      }
+      if (data.safety.oshaDartRate !== null && data.safety.oshaDartRate !== undefined) {
+        table += `OSHA DART Rate: ${data.safety.oshaDartRate}\n`;
+      }
+      table += '\n';
     }
 
     // Loss History
@@ -329,7 +440,7 @@ Data: ${JSON.stringify(data, null, 2)}`,
       // Header
       doc
         .fontSize(20)
-        .text('Commercial Property Submission', { align: 'center' });
+        .text('Workers Compensation Submission', { align: 'center' });
       doc.moveDown();
 
       // Summary
