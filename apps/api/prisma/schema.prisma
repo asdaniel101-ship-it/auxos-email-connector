@@ -253,6 +253,9 @@ model FieldDefinition {
   documentFieldKey    String?
   businessDescription String?        @db.Text
   extractorLogic      String?        @db.Text
+  whereToLook         String?        @db.Text
+  inAcord130          String?
+  whereInAcord130     String?        @db.Text
   documentSources     String[]       @default([])
   alternateFieldNames String[]       @default([])
   createdAt           DateTime       @default(now())
