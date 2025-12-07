@@ -62,10 +62,10 @@ export default function Home() {
                 Forward any insurance submission email to
               </p>
               <a 
-                href="mailto:auxoreachout@gmail.com" 
+                href="mailto:submit@auxos.dev" 
                 className="inline-block text-2xl sm:text-3xl lg:text-4xl font-bold text-white underline decoration-2 underline-offset-4 hover:text-blue-200 transition-colors"
               >
-                auxoreachout@gmail.com
+                submit@auxos.dev
               </a>
               <p className="text-lg sm:text-xl text-white/80 mt-4 mb-2">
                 <strong className="text-white">Include all attachments</strong> (ACORD forms, SOVs, loss runs, etc.) as we process these
@@ -101,7 +101,7 @@ export default function Home() {
             {
               step: "1",
               title: "Forward Your Submission",
-              description: "Simply forward any insurance submission email to auxoreachout@gmail.com. Include all attachments (ACORD forms, SOVs, loss runs, etc.).",
+              description: "Simply forward any insurance submission email to submit@auxos.dev. Include all attachments (ACORD forms, SOVs, loss runs, etc.).",
             },
             {
               step: "2",
@@ -146,7 +146,7 @@ export default function Home() {
                 </div>
                 <div>
                   <p className="font-semibold text-slate-900">Auxo</p>
-                  <p className="text-sm text-slate-600">auxoreachout@gmail.com</p>
+                  <p className="text-sm text-slate-600">submit@auxos.dev</p>
                 </div>
               </div>
             </div>
