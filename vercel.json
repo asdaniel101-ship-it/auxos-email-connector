@@ -1,10 +1,9 @@
 {
-  "buildCommand": "pnpm install && pnpm --filter web run build && pnpm --filter api run build",
-  "installCommand": "pnpm install",
-  "outputDirectory": "apps/web/.next",
+  "buildCommand": "cd ../.. && pnpm install && pnpm --filter web run build && pnpm --filter api run build",
+  "installCommand": "cd ../.. && CI=true pnpm install --filter web --ignore-scripts --no-frozen-lockfile",
   "framework": "nextjs",
   "functions": {
-    "api/index.ts": {
+    "apps/api/api/index.ts": {
       "maxDuration": 60
     }
   }
