@@ -1,74 +1,194 @@
 {
   "submission": {
-    "submissionId": {
+    "applicantName": {
       "type": "string",
-      "description": "Internal ID assigned to this email submission",
-      "whereToLook": "Generated"
-    },
-    "carrierName": {
-      "type": "string",
-      "description": "Name of the carrier receiving or sending the submission",
-      "whereToLook": "Email body, signature, ACORD header"
-    },
-    "brokerName": {
-      "type": "string",
-      "description": "Name of the submitting broker / producer",
-      "whereToLook": "Email signature, ACORD Producer section"
-    },
-    "brokerEmail": {
-      "type": "string",
-      "description": "Email of submitting broker",
-      "whereToLook": "Email headers"
-    },
-    "brokerPhone": {
-      "type": "string",
-      "description": "Broker phone number",
-      "whereToLook": "Signature, ACORD"
-    },
-    "namedInsured": {
-      "type": "string",
-      "description": "Legal name of the insured business",
-      "whereToLook": "ACORD 125/140, SOV header, email body"
+      "description": "Legal name of the business entity seeking workers comp coverage"
     },
     "mailingAddress": {
       "type": "string",
-      "description": "Insured's mailing address",
-      "whereToLook": "ACORD, email"
+      "description": "Primary mailing address for the insured; official correspondence address"
     },
-    "naicsCode": {
+    "officePhone": {
       "type": "string",
-      "description": "NAICS industry code",
-      "whereToLook": "ACORD, email narrative"
+      "description": "Main business phone number of the insured"
     },
-    "operationsDescription": {
+    "mobilePhone": {
       "type": "string",
-      "description": "Free-text description of operations",
-      "whereToLook": "Email body, ACORD remarks"
+      "description": "Mobile phone of the primary insured contact"
+    },
+    "website": {
+      "type": "string",
+      "description": "Official website of the insured business"
+    },
+    "yearsInBusiness": {
+      "type": "number",
+      "description": "Number of years the business has operated (under current or predecessor ownership)"
+    },
+    "fein": {
+      "type": "string",
+      "description": "Federal Employer Identification Number (9-digit tax ID) for the insured"
+    },
+    "ncciRiskId": {
+      "type": "string",
+      "description": "NCCI-assigned Risk ID used for experience rating and WC data"
+    },
+    "otherEmployerRegistrationNumber": {
+      "type": "string",
+      "description": "Any state or other rating bureau employer registration number"
     },
     "submissionType": {
       "type": "string",
-      "description": "New, renewal, endorsement, etc.",
-      "whereToLook": "Subject, body"
+      "description": "Type of transaction requested: quote only, bind/issue, or assigned risk/other special handling"
     },
-    "effectiveDate": {
-      "type": "date",
-      "description": "Proposed policy effective date",
-      "whereToLook": "ACORD, email"
-    },
-    "expirationDate": {
-      "type": "date",
-      "description": "Proposed expiration date",
-      "whereToLook": "ACORD, email"
-    },
-    "priorCarrier": {
+    "agencyName": {
       "type": "string",
-      "description": "Current or expiring carrier",
-      "whereToLook": "Email narrative, loss runs, ACORD"
+      "description": "Name of the broker/agency submitting the risk"
     },
-    "priorPolicyNumber": {
+    "agencyAddress": {
       "type": "string",
-      "description": "Expiring policy number",
-      "whereToLook": "ACORD, loss runs"
+      "description": "Mailing address of the submitting agency"
+    },
+    "producerName": {
+      "type": "string",
+      "description": "Primary producer/agent managing the account at the agency"
+    },
+    "csrName": {
+      "type": "string",
+      "description": "Account manager/CSR supporting the producer"
+    },
+    "producerEmail": {
+      "type": "string",
+      "description": "Email address of the main producer contact"
+    },
+    "producerPhone": {
+      "type": "string",
+      "description": "Direct phone number for producer"
+    },
+    "underwriterName": {
+      "type": "string",
+      "description": "Carrier underwriter the submission is being addressed to (if specified)"
+    },
+    "agencyCustomerId": {
+      "type": "string",
+      "description": "Internal account identifier used in the agency's system"
+    },
+    "billingPlan": {
+      "type": "string",
+      "description": "Whether the account will be agency-billed or direct-billed and any special billing instructions"
+    },
+    "paymentPlan": {
+      "type": "string",
+      "description": "Requested installment schedule (annual, quarterly, monthly reporting, etc.)"
+    },
+    "auditType": {
+      "type": "string",
+      "description": "How and when payroll audit is performed (at expiration vs. periodic self-reporting)"
+    }
+  },
+  "businessEntity": {
+    "entityType": {
+      "type": "string",
+      "description": "Legal entity type (LLC, Corporation, Partnership, Sole Proprietorship, etc.)"
+    },
+    "operationsDescription": {
+      "type": "text",
+      "description": "Detailed description of business operations and activities"
+    },
+    "hazardousMaterialsExposure": {
+      "type": "boolean",
+      "description": "Whether business handles or is exposed to hazardous materials"
+    },
+    "aircraftOrWatercraftOwned": {
+      "type": "boolean",
+      "description": "Whether business owns aircraft or watercraft"
+    },
+    "workUndergroundOrAbove15Feet": {
+      "type": "boolean",
+      "description": "Whether work is performed underground or above 15 feet"
+    },
+    "workOverWater": {
+      "type": "boolean",
+      "description": "Whether work is performed over water"
+    },
+    "subcontractorUsage": {
+      "type": "boolean",
+      "description": "Whether business uses subcontractors"
+    },
+    "subcontractorPercentageSubcontracted": {
+      "type": "number",
+      "description": "Percentage of work subcontracted"
+    },
+    "workSubletWithoutCOI": {
+      "type": "boolean",
+      "description": "Whether work is sublet without certificates of insurance"
+    },
+    "otherBusinessOperations": {
+      "type": "text",
+      "description": "Other business operations not covered by standard questions"
+    },
+    "safetyProgramInOperation": {
+      "type": "boolean",
+      "description": "Whether a formal safety program is in operation"
+    },
+    "groupTransportationProvided": {
+      "type": "boolean",
+      "description": "Whether group transportation is provided to employees"
+    },
+    "employeesUnder16OrOver60": {
+      "type": "boolean",
+      "description": "Whether business employs workers under 16 or over 60"
+    },
+    "seasonalEmployees": {
+      "type": "boolean",
+      "description": "Whether business employs seasonal workers"
+    },
+    "volunteerOrDonatedLabor": {
+      "type": "boolean",
+      "description": "Whether business uses volunteer or donated labor"
+    },
+    "employeesWithPhysicalHandicaps": {
+      "type": "boolean",
+      "description": "Whether business employs workers with physical handicaps"
+    },
+    "employeesTravelOutOfState": {
+      "type": "boolean",
+      "description": "Whether employees travel out of state for work"
+    },
+    "athleticTeamsSponsored": {
+      "type": "boolean",
+      "description": "Whether business sponsors athletic teams"
+    },
+    "preEmploymentPhysicalsRequired": {
+      "type": "boolean",
+      "description": "Whether pre-employment physicals are required"
+    },
+    "otherInsuranceWithThisInsurer": {
+      "type": "boolean",
+      "description": "Whether insured has other insurance policies with this insurer"
+    },
+    "priorCoverageDeclinedOrCancelled": {
+      "type": "boolean",
+      "description": "Whether prior coverage was declined or cancelled"
+    },
+    "employeeHealthPlansProvided": {
+      "type": "boolean",
+      "description": "Whether employee health plans are provided"
+    },
+    "leasedEmployees": {
+      "type": "boolean",
+      "description": "Whether business uses leased employees"
+    },
+    "employeesWorkingAtHome": {
+      "type": "boolean",
+      "description": "Whether employees work from home"
+    },
+    "taxLiensOrBankruptcyLast5Years": {
+      "type": "boolean",
+      "description": "Whether business has had tax liens or bankruptcy in last 5 years"
+    },
+    "unpaidWCPremiumLast5Years": {
+      "type": "boolean",
+      "description": "Whether business has unpaid WC premium in last 5 years"
     }
   },
   "locations": {
@@ -77,215 +197,679 @@
     "items": {
       "locationNumber": {
         "type": "number",
-        "description": "Location index used by ACORD/SOV"
+        "description": "Numeric identifier for the location"
       },
-      "buildings": {
-        "type": "array",
-        "description": "Array of building objects at this location",
-        "items": {
-          "buildingNumber": {
-            "type": "number",
-            "description": "Building number at a location"
-          },
-          "buildingName": {
-            "type": "string",
-            "description": "Optional building label"
-          },
-          "riskAddress": {
-            "type": "string",
-            "description": "Full address of the building"
-          },
-          "city": {
-            "type": "string",
-            "description": "City of building"
-          },
-          "state": {
-            "type": "string",
-            "description": "2-letter state"
-          },
-          "zipCode": {
-            "type": "string",
-            "description": "ZIP"
-          },
-          "buildingSqFt": {
-            "type": "number",
-            "description": "Total building square footage"
-          },
-          "numberOfStories": {
-            "type": "number",
-            "description": "Number of stories"
-          },
-          "yearBuilt": {
-            "type": "number",
-            "description": "Original year built"
-          },
-          "yearRenovated": {
-            "type": "number",
-            "description": "Major renovation year"
-          },
-          "constructionType": {
-            "type": "string",
-            "description": "ISO construction type"
-          },
-          "roofType": {
-            "type": "string",
-            "description": "Roof material/type"
-          },
-          "roofYearUpdated": {
-            "type": "number",
-            "description": "Year roof last updated"
-          },
-          "primaryOccupancy": {
-            "type": "string",
-            "description": "Main occupancy"
-          },
-          "occupancyPercentage": {
-            "type": "number",
-            "description": "Percent occupied"
-          },
-          "buildingUseHours": {
-            "type": "string",
-            "description": "Hours of operation"
-          },
-          "sprinklered": {
-            "type": "boolean",
-            "description": "Whether building has sprinklers"
-          },
-          "sprinklerType": {
-            "type": "string",
-            "description": "Type of sprinkler system"
-          },
-          "sprinklerPercentage": {
-            "type": "number",
-            "description": "% of building sprinklered"
-          },
-          "fireAlarmType": {
-            "type": "string",
-            "description": "Type of fire alarm"
-          },
-          "burglarAlarmType": {
-            "type": "string",
-            "description": "Burglary/security alarm type"
-          },
-          "distanceToHydrantFeet": {
-            "type": "number",
-            "description": "Distance to nearest fire hydrant (ft)"
-          },
-          "distanceToFireStationMiles": {
-            "type": "number",
-            "description": "Distance to fire station (miles)"
-          },
-          "fireProtectionClass": {
-            "type": "string",
-            "description": "ISO protection class"
-          },
-          "neighbouringExposures": {
-            "type": "string",
-            "description": "Description of adjacent exposures"
-          },
-          "buildingLimit": {
-            "type": "number",
-            "description": "Limit for building coverage"
-          }
-        }
+      "locationStreetAddress": {
+        "type": "string",
+        "description": "Street address of the location"
+      },
+      "locationCity": {
+        "type": "string",
+        "description": "City of the location"
+      },
+      "locationCounty": {
+        "type": "string",
+        "description": "County of the location"
+      },
+      "locationState": {
+        "type": "string",
+        "description": "State of the location (2-letter abbreviation)"
+      },
+      "locationZip": {
+        "type": "string",
+        "description": "ZIP code of the location"
+      },
+      "locationFloor": {
+        "type": "string",
+        "description": "Floor or suite number if applicable"
+      },
+      "primaryOccupancy": {
+        "type": "string",
+        "description": "Main occupancy or use type of the location (e.g., Manufacturing, Office, Warehouse)"
+      },
+      "riskAddress": {
+        "type": "string",
+        "description": "Full address of location (street, city, state, ZIP)"
+      },
+      "city": {
+        "type": "string",
+        "description": "City where location is located"
+      },
+      "state": {
+        "type": "string",
+        "description": "Two-letter state abbreviation"
+      },
+      "zipCode": {
+        "type": "string",
+        "description": "ZIP code (5 or 9 digits)"
       }
     }
   },
+  "classification": {
+    "type": "array",
+    "description": "Array of classification objects (per state & class code)",
+    "items": {
+      "wcState": {
+        "type": "string",
+        "description": "State for which this classification applies"
+      },
+      "ratingLocationNumber": {
+        "type": "number",
+        "description": "Location number for rating purposes"
+      },
+      "classCode": {
+        "type": "string",
+        "description": "NCCI class code for this classification"
+      },
+      "classCodeDescription": {
+        "type": "string",
+        "description": "Description of the class code"
+      },
+      "dutiesDescription": {
+        "type": "text",
+        "description": "Description of duties performed under this classification"
+      },
+      "numEmployeesFullTime": {
+        "type": "number",
+        "description": "Number of full-time employees"
+      },
+      "numEmployeesPartTime": {
+        "type": "number",
+        "description": "Number of part-time employees"
+      },
+      "estimatedAnnualPayroll": {
+        "type": "number",
+        "description": "Estimated annual payroll for this classification"
+      },
+      "rate": {
+        "type": "decimal",
+        "description": "Rate per $100 of payroll for this classification"
+      },
+      "estimatedAnnualManualPremium": {
+        "type": "number",
+        "description": "Estimated annual manual premium for this classification"
+      },
+      "numberOfEmployees": {
+        "type": "number",
+        "description": "Total employee count for this class"
+      },
+      "fullTimeEmployees": {
+        "type": "number",
+        "description": "Full-time employee count"
+      },
+      "partTimeEmployees": {
+        "type": "number",
+        "description": "Part-time employee count"
+      },
+      "seasonalEmployees": {
+        "type": "number",
+        "description": "Seasonal employee count"
+      },
+      "employeeType": {
+        "type": "string",
+        "description": "Employee type (Clerical, Outside Sales, etc.)"
+      },
+      "classDescription": {
+        "type": "string",
+        "description": "Job description for the class code"
+      }
+    }
+  },
+  "payroll": {
+    "totalEstimatedAnnualPayroll": {
+      "type": "number",
+      "description": "Total estimated annual payroll across all classes/locations"
+    },
+    "totalEmployeeCount": {
+      "type": "number",
+      "description": "Total headcount across all locations"
+    },
+    "payrollBasis": {
+      "type": "string",
+      "description": "Payroll basis (Actual, Estimated, or Audited)"
+    },
   "coverage": {
-    "policyType": {
+    "coveredStatesPart1": {
       "type": "string",
-      "description": "Type of policy"
+      "description": "States covered under Part 1 (Workers Compensation)"
     },
-    "causeOfLossForm": {
+    "otherStatesInsuranceStatesPart3": {
       "type": "string",
-      "description": "Basic / Broad / Special"
+      "description": "States covered under Part 3 (Other States Insurance)"
     },
-    "coinsurancePercent": {
+    "excludedStatesPart1": {
+      "type": "string",
+      "description": "States excluded from Part 1 coverage"
+    },
+    "employersLiabilityEachAccident": {
       "type": "number",
-      "description": "Coinsurance percentage"
+      "description": "Employers Liability limit - Each Accident"
     },
-    "valuationMethod": {
-      "type": "string",
-      "description": "Replacement cost vs ACV"
-    },
-    "buildingLimit": {
+    "employersLiabilityDiseasePolicyLimit": {
       "type": "number",
-      "description": "Limit for building coverage"
+      "description": "Employers Liability limit - Disease Policy Limit"
     },
-    "businessPersonalPropertyLimit": {
+    "employersLiabilityDiseaseEachEmployee": {
       "type": "number",
-      "description": "BPP limit"
+      "description": "Employers Liability limit - Disease Each Employee"
     },
-    "businessIncomeLimit": {
+    "medicalDeductible": {
       "type": "number",
-      "description": "Business income / extra expense limit"
+      "description": "Medical deductible amount"
     },
-    "deductibleAllPeril": {
+    "indemnityDeductible": {
       "type": "number",
-      "description": "Base property deductible"
+      "description": "Indemnity deductible amount"
     },
-    "windHailDeductible": {
-      "type": "string",
-      "description": "Wind/hail special deductible"
-    },
-    "floodCoverage": {
-      "type": "string",
-      "description": "Flood coverage presence and limit"
-    },
-    "earthquakeCoverage": {
-      "type": "string",
-      "description": "EQ coverage presence and limit"
-    },
-    "equipmentBreakdownCoverage": {
+    "uslhCoverage": {
       "type": "boolean",
-      "description": "Whether EB is included"
+      "description": "Whether USLH (US Longshore and Harbor Workers) coverage is included"
     },
-    "ordinanceOrLawCoverage": {
+    "volunteerCompCoverage": {
       "type": "boolean",
-      "description": "Ordinance or law coverage"
+      "description": "Whether Volunteer Compensation coverage is included"
     },
-    "terrorismCoverage": {
+    "foreignCoverage": {
       "type": "boolean",
-      "description": "TRIA election"
+      "description": "Whether Foreign coverage is included"
     },
-    "blanketCoverageFlag": {
-      "type": "boolean",
-      "description": "Whether coverage is blanket"
-    },
-    "blanketDescription": {
+    "managedCareOption": {
       "type": "string",
-      "description": "Description of blanket"
+      "description": "Managed care option selected (if any)"
+    },
+    "eachAccidentLimit": {
+      "type": "number",
+      "description": "Employers Liability - Each Accident limit (Coverage A)"
+    },
+    "diseasePolicyLimit": {
+      "type": "number",
+      "description": "Employers Liability - Disease Policy Limit (Coverage B)"
+    },
+    "diseaseEachEmployeeLimit": {
+      "type": "number",
+      "description": "Employers Liability - Disease Each Employee Limit (Coverage C)"
+    },
+    "statesOfOperation": {
+      "type": "array",
+      "description": "Array of all states where employees work",
+      "items": {
+        "type": "string"
+      }
+    },
+    "monopolisticStates": {
+      "type": "array",
+      "description": "Monopolistic states (OH, ND, WA, WY) if applicable",
+      "items": {
+        "type": "string"
+      }
+    },
+    "waiverOfSubrogation": {
+      "type": "boolean",
+      "description": "Whether waiver of subrogation is requested"
+    },
+    "waiverOfSubrogationFor": {
+      "type": "array",
+      "description": "Specific entities for waiver of subrogation",
+      "items": {
+        "type": "string"
+      }
+    },
+    "additionalInsured": {
+      "type": "array",
+      "description": "List of additional insureds",
+      "items": {
+        "type": "string"
+      }
+    },
+    "alternateEmployer": {
+      "type": "boolean",
+      "description": "Whether alternate employer coverage is requested"
+    },
+    "voluntaryCompensation": {
+      "type": "boolean",
+      "description": "Whether voluntary compensation coverage is requested"
+    },
+    "foreignVoluntaryWorkers": {
+      "type": "boolean",
+      "description": "Whether foreign voluntary workers coverage is requested"
+    },
+    "uslhEndorsement": {
+      "type": "boolean",
+      "description": "Whether USL&H (US Longshore and Harbor Workers) endorsement is requested"
+    },
+    "maritimeEndorsement": {
+      "type": "boolean",
+      "description": "Whether maritime endorsement is requested"
+    }
+  },
+    "payrollScheduleAttached": {
+      "type": "boolean",
+      "description": "Whether payroll schedule is attached"
+    },
+    "payrollByClassAndState": {
+      "type": "text",
+      "description": "Payroll breakdown by class code and state"
+    },
+    "overtimePayroll": {
+      "type": "number",
+      "description": "Overtime payroll amount"
+    },
+    "clericalPayroll": {
+      "type": "number",
+      "description": "Clerical payroll amount"
+    },
+    "outsideSalesPayroll": {
+      "type": "number",
+      "description": "Outside sales payroll amount"
+    },
+    "subcontractorPayroll": {
+      "type": "number",
+      "description": "Subcontractor payroll amount"
+    },
+    "uninsuredSubcontractorPayroll": {
+      "type": "number",
+      "description": "Uninsured subcontractor payroll amount"
+    }
+  },
+  "rating": {
+    "experienceModificationRate": {
+      "type": "decimal",
+      "description": "Experience Modification Rate (EMR)"
+    },
+    "emrEffectiveDate": {
+      "type": "date",
+      "description": "Date of current EMR"
+    },
+    "emrState": {
+      "type": "string",
+      "description": "State where rated"
+    },
+    "scheduleRatingCredit": {
+      "type": "number",
+      "description": "Schedule credit/debit percentage"
+    },
+    "meritRating": {
+      "type": "string",
+      "description": "Merit rating if applicable"
+    },
+    "retrospectiveRating": {
+      "type": "boolean",
+      "description": "Whether retrospective rating applies"
+    }
+  },
+  "priorCarrier": {
+    "priorCarrierYear": {
+      "type": "number",
+      "description": "Year of prior carrier policy"
+    },
+    "priorCarrierName": {
+      "type": "string",
+      "description": "Name of prior carrier"
+    },
+    "priorPolicyNumber": {
+      "type": "string",
+      "description": "Prior policy number"
+    },
+    "priorAnnualPremium": {
+      "type": "number",
+      "description": "Prior annual premium amount"
+    },
+    "priorExperienceMod": {
+      "type": "decimal",
+      "description": "Prior experience modification factor"
+    },
+    "priorNumberOfClaims": {
+      "type": "number",
+      "description": "Number of claims under prior carrier"
+    },
+    "priorAmountPaid": {
+      "type": "number",
+      "description": "Total amount paid on prior claims"
+    },
+    "priorReserve": {
+      "type": "number",
+      "description": "Total reserves on prior claims"
+    },
+    "lossRunsAttached": {
+      "type": "boolean",
+      "description": "Whether loss runs are attached"
     }
   },
   "lossHistory": {
-    "lossHistoryPeriodYears": {
+    "type": "array",
+    "description": "Array of claim objects",
+    "items": {
+      "claimNumber": {
+        "type": "string",
+        "description": "Claim number"
+      },
+      "claimStatus": {
+        "type": "string",
+        "description": "Status of the claim (Open, Closed, etc.)"
+      },
+      "claimType": {
+        "type": "string",
+        "description": "Type of claim"
+      },
+      "claimDateOfLoss": {
+        "type": "date",
+        "description": "Date of loss"
+      },
+      "claimDescription": {
+        "type": "text",
+        "description": "Description of the claim"
+      },
+      "claimCauseOfInjury": {
+        "type": "string",
+        "description": "Cause of injury"
+      },
+      "claimBodyPart": {
+        "type": "string",
+        "description": "Body part injured"
+      },
+      "claimPaidIndemnity": {
+        "type": "number",
+        "description": "Indemnity amount paid"
+      },
+      "claimPaidMedical": {
+        "type": "number",
+        "description": "Medical amount paid"
+      },
+      "claimReserve": {
+        "type": "number",
+        "description": "Current reserve amount"
+      },
+      "claimTotalIncurred": {
+        "type": "number",
+        "description": "Total incurred (paid + reserve)"
+      },
+      "claimLitigationFlag": {
+        "type": "boolean",
+        "description": "Whether claim is in litigation"
+      }
+    }
+  },
+  "individuals": {
+    "type": "array",
+    "description": "Array of individual objects (included/excluded)",
+    "items": {
+      "individualState": {
+        "type": "string",
+        "description": "State for this individual"
+      },
+      "individualLocationNumber": {
+        "type": "number",
+        "description": "Location number for this individual"
+      },
+      "individualName": {
+        "type": "string",
+        "description": "Name of the individual"
+      },
+      "individualTitle": {
+        "type": "string",
+        "description": "Title/position of the individual"
+      },
+      "individualOwnershipPercent": {
+        "type": "number",
+        "description": "Ownership percentage"
+      },
+      "individualRelationship": {
+        "type": "string",
+        "description": "Relationship to the business"
+      },
+      "individualDuties": {
+        "type": "text",
+        "description": "Duties performed by the individual"
+      },
+      "individualIncludeOrExcludeWC": {
+        "type": "string",
+        "description": "Whether individual is included or excluded from WC coverage"
+      },
+      "individualClassCode": {
+        "type": "string",
+        "description": "Class code for this individual"
+      },
+      "individualRemunerationPayroll": {
+        "type": "number",
+        "description": "Remuneration/payroll for this individual"
+      }
+    }
+  },
+  "premiumSummary": {
+    "totalEstimatedAnnualPremiumAllStates": {
       "type": "number",
-      "description": "Number of prior years shown (e.g. 3 or 5)"
+      "description": "Total estimated annual premium across all states"
     },
-    "numberOfClaims": {
+    "totalMinimumPremiumAllStates": {
       "type": "number",
-      "description": "Total count of claims in period"
+      "description": "Total minimum premium across all states"
     },
-    "totalIncurredLoss": {
+    "totalDepositPremiumAllStates": {
       "type": "number",
-      "description": "Sum of paid + outstanding reserves"
-    },
-    "largestSingleLoss": {
-      "type": "number",
-      "description": "Largest incurred amount for one claim"
-    },
-    "anyOpenClaims": {
+      "description": "Total deposit premium across all states"
+    }
+  },
+  "owners": {
+    "type": "array",
+    "description": "Array of owner/officer objects",
+    "items": {
+      "ownerName": {
+        "type": "string",
+        "description": "Name of owner/officer"
+      },
+      "ownerTitle": {
+        "type": "string",
+        "description": "Title (President, VP, etc.)"
+      },
+      "ownerDuties": {
+        "type": "text",
+        "description": "Job duties description"
+      },
+      "includedExcluded": {
+        "type": "boolean",
+        "description": "Include or exclude from coverage"
+      },
+      "ownershipPercentage": {
+        "type": "number",
+        "description": "Ownership percentage"
+      },
+      "estimatedAnnualPayroll": {
+        "type": "number",
+        "description": "Estimated annual payroll if included"
+      },
+      "classCode": {
+        "type": "string",
+        "description": "WC class code if included"
+      }
+    }
+  },
+  "safety": {
+    "writtenSafetyProgram": {
       "type": "boolean",
-      "description": "Whether there are open claims"
+      "description": "Whether there is a formal written safety program"
     },
-    "anyCatLosses": {
+    "safetyCommittee": {
       "type": "boolean",
-      "description": "Whether any catastrophe losses"
+      "description": "Whether there is a safety committee"
     },
-    "lossNarrativeSummary": {
+    "safetyMeetingFrequency": {
       "type": "string",
-      "description": "Text summary of loss profile"
+      "description": "How often safety meetings are conducted"
+    },
+    "drugTestingProgram": {
+      "type": "boolean",
+      "description": "Whether there is a drug testing program"
+    },
+    "drugTestingType": {
+      "type": "string",
+      "description": "Type of drug testing (Pre-employment, Random, Post-accident, etc.)"
+    },
+    "returnToWorkProgram": {
+      "type": "boolean",
+      "description": "Whether there is a return-to-work program"
+    },
+    "modifiedDutyAvailable": {
+      "type": "boolean",
+      "description": "Whether modified/light duty work is available"
+    },
+    "safetyTrainingProvided": {
+      "type": "boolean",
+      "description": "Whether formal safety training is provided"
+    },
+    "safetyTrainingTopics": {
+      "type": "array",
+      "description": "List of safety training topics covered",
+      "items": {
+        "type": "string"
+      }
+    },
+    "oshaRecordable": {
+      "type": "number",
+      "description": "Number of OSHA recordable incidents"
+    },
+    "oshaLostTimeCases": {
+      "type": "number",
+      "description": "Number of OSHA lost-time cases"
+    },
+    "oshaDartRate": {
+      "type": "decimal",
+      "description": "OSHA DART rate"
+    }
+  },
+  "subcontractors": {
+    "useSubcontractors": {
+      "type": "boolean",
+      "description": "Whether subcontractors are used"
+    },
+    "estimatedAnnualCost": {
+      "type": "number",
+      "description": "Estimated annual dollar amount paid to subcontractors"
+    },
+    "certificatesRequired": {
+      "type": "boolean",
+      "description": "Whether certificates of insurance are required from subcontractors"
+    },
+    "certificatesOnFile": {
+      "type": "boolean",
+      "description": "Whether certificates of insurance are maintained on file"
+    },
+    "subcontractorTypes": {
+      "type": "array",
+      "description": "Types of work that are subcontracted",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "vehicles": {
+    "numberOfVehicles": {
+      "type": "number",
+      "description": "Total number of vehicles owned, leased, or operated"
+    },
+    "employeesOperatingVehicles": {
+      "type": "number",
+      "description": "Number of employees who operate company vehicles"
+    },
+    "vehicleTypes": {
+      "type": "array",
+      "description": "Types of vehicles in the fleet",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mileageRadius": {
+      "type": "string",
+      "description": "Typical operating radius for vehicles"
+    },
+    "commercialAutoPolicy": {
+      "type": "boolean",
+      "description": "Whether a separate commercial auto insurance policy is maintained"
+    },
+    "hiredNonOwnedCoverage": {
+      "type": "boolean",
+      "description": "Whether hired/non-owned auto coverage is needed"
+    }
+  },
+  "business": {
+    "yearBusinessEstablished": {
+      "type": "number",
+      "description": "Year the business was established"
+    },
+    "legalEntity": {
+      "type": "string",
+      "description": "Legal entity type (Corporation, LLC, Sole Proprietor, Partnership, etc.)"
+    },
+    "fein": {
+      "type": "string",
+      "description": "Federal Employer ID Number"
+    },
+    "websiteUrl": {
+      "type": "string",
+      "description": "Company website URL"
+    },
+    "parentCompany": {
+      "type": "string",
+      "description": "Name of parent company if applicable"
+    },
+    "affiliatedCompanies": {
+      "type": "array",
+      "description": "List of related or affiliated companies",
+      "items": {
+        "type": "string"
+      }
+    },
+    "seasonalOperations": {
+      "type": "boolean",
+      "description": "Whether the business has seasonal operations"
+    },
+    "peakSeasons": {
+      "type": "array",
+      "description": "Months or seasons when business activity peaks",
+      "items": {
+        "type": "string"
+      }
+    },
+    "annualRevenue": {
+      "type": "number",
+      "description": "Gross annual revenue or sales"
+    },
+    "yearsWithCurrentManagement": {
+      "type": "number",
+      "description": "Number of years the current management team has been in place"
+    }
+  },
+  "contacts": {
+    "primaryContactName": {
+      "type": "string",
+      "description": "Name of the primary contact person"
+    },
+    "primaryContactTitle": {
+      "type": "string",
+      "description": "Job title of the primary contact person"
+    },
+    "primaryContactPhone": {
+      "type": "string",
+      "description": "Phone number of the primary contact person"
+    },
+    "primaryContactEmail": {
+      "type": "string",
+      "description": "Email address of the primary contact person"
+    },
+    "hrContactName": {
+      "type": "string",
+      "description": "Name of the HR contact person"
+    },
+    "hrContactEmail": {
+      "type": "string",
+      "description": "Email address of the HR contact person"
+    },
+    "safetyContactName": {
+      "type": "string",
+      "description": "Name of the safety contact person"
+    },
+    "safetyContactEmail": {
+      "type": "string",
+      "description": "Email address of the safety contact person"
     }
   }
 }
-
