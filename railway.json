@@ -8,6 +8,7 @@
     "startCommand": "cd apps/api && node dist/main",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
-  }
+  },
+  "comment": "Updated start command to fix MODULE_NOT_FOUND error"
 }
 
